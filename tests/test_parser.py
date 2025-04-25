@@ -1,6 +1,20 @@
 import pytest
 
-from pytlopo.parse import *
+from pytlopo.parser.forms import *
+from pytlopo.parser.lines import extract_etyma
+
+
+@pytest.mark.parametrize(
+    'i,pos,o',
+    [
+        ('(abc)cde', 'start', ('abc', 'cde')),
+        ('( abc ) cde', 'start', ('abc', 'cde')),
+        ('( (a) bc ) cde', 'start', ('(a) bc', 'cde')),
+        ('cde(abc)', 'end', ('abc', 'cde')),
+    ]
+)
+def test_strip_comment(i, pos, o):
+    assert strip_comment(i, pos) == o
 
 
 @pytest.mark.parametrize(
@@ -13,6 +27,12 @@ from pytlopo.parse import *
     ]
 )
 def test_iter_graphemes(i, o):
+    """
+    list(iter_graphemes('ᵑgu-ᵑgum'))
+['ᵑg', 'u', '-', 'ᵑg', 'u', 'm']
+list(iter_graphemes('buar̃a'))
+['b', 'u', 'a', 'r̃', 'a']
+    """
     assert list(iter_graphemes(i)) == o.split()
 
 
@@ -25,6 +45,7 @@ def test_iter_graphemes(i, o):
         ("bu[b,g]uŋ 'ridgepole'", (["bu[b,g]uŋ"], "'ridgepole'")),
         ("bu<b>uŋ 'ridgepole'", (["bu<b>uŋ"], "'ridgepole'")),
         ("|bubuŋ  second| 'ridgepole'", (["bubuŋ second"], "'ridgepole'")),
+        ("pa, (ADV) *qa-pa ‘t’", (["pa", "qa-pa"], "‘t’")),
     ]
 )
 def test_parse_protoform(i, o):

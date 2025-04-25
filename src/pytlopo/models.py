@@ -5,39 +5,12 @@ import re
 import functools
 import dataclasses
 
-
-from .parse import (
-    proto_pattern, parse_protoform, POC_GRAPHEMES, extract_etyma,
-    witness_pattern, iter_glosses, get_quotes, glosses_and_note
+from .config import TRANSCRIPTION, proto_pattern, witness_pattern
+from pytlopo.parser.forms import (
+    parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes, glosses_and_note,
+    strip_footnote_reference, strip_comment, strip_pos,
 )
-
-#
-# FIXME: gloss parsing should work with smart quotes as well!
-#
-
-TRANSCRIPTION = ('Nɸ'
-                 'h'
-                 'áàāãæǣɒɒ̄'
-                 'fzʔðᵑg'
-                 '()[]<>-'
-                 'ɣ'
-                 'ɔ̀ ɔɔ̄'
-                 'vøʷöōòó'
-                 'î'  # i circumflex
-                 'ĩ'  # i tilde
-                 'ì'  # i grave
-                 'ī'  # i macron
-                 'ɨíIɨ̈ı'
-                 'ʈtʰᵐxθbˠŋɳ'
-                 'èɛɛ́ ɛ̃ə̄éēêəɛ̃́'
-                 'ūüùúʉ'
-                 'ñm̀'
-                 'ṣẓḍʃ'
-                 'čc̣'
-                 'ˀɬʌḷȴl̥ʋv̈'
-                 'ɯβ'  # LATIN SMALL LETTER TURNED M - used as superscript!
-                 'ṛr̃ɾɽ')
-B = "ɛ̄"
+from pytlopo.parser.lines import extract_etyma
 
 
 @dataclasses.dataclass
@@ -45,53 +18,59 @@ class Protoform:
     """
     PEOc (POC?)[6] *kori(s), *koris-i- 'scrape (esp. coconuts), grate (esp. coconuts)
     """
-    form: str
+    forms: list
     glosses: str
     protolanguage: str
     note: str = None
     pfdoubt: bool = False
     pldoubt: bool = False
+    pos: str = None
 
     def __str__(self):
-        return "{} *{} '{}'".format(self.protolanguage, self.form, self.glosses[0] if self.glosses else "")
+        return "{} *{} '{}'".format(
+            self.protolanguage,
+            ', '.join('*' + f for f in self.forms),
+            self.glosses[0] if self.glosses else "")
 
     @classmethod
     def from_line(cls, line):
         quotes = get_quotes(line)
-        kw = {}
+        kw = {'glosses': []}
         m = proto_pattern.match(line)
         assert m
 
         kw['protolanguage'] = m.group('pl')
         kw['pfdoubt'] = bool(m.group('pfdoubt'))
         kw['pldoubt'] = bool(m.group('pldoubt'))
-        pl, _, rem = line.partition('*')
-        if quotes[0] in rem:
-            # 1. Find matching end-quote.
-            # 2. consume everything in parens after that, iteratively.
-            pf, _, rem = rem.partition(quotes[0])
-            parse_protoform(pf.strip(), kw['protolanguage'])
-        else:
-            # FIXME: What to do if there is no gloss?
-            pf = ''
-        #if kw['protolanguage'] == 'PMP':
-        #    print(line, pf)
-        #if '1)' in pf:
-        #    print(pf.strip())
-        """
-        usu(q,p), *usu(p)-i 
-ubi/*ibu 
-tuRi[-J 
-tup-a((n,IJ))
-tuki- (v)
-titey (also *teytey)
-tau (ni) waga         - multiple words
-taRa(q) (N, V)
-sauq ? (N) 
-*rabut/*rubat
-        """
-        kw['form'] = pf.strip()
-        kw['glosses'], kw['note'] = glosses_and_note(rem, quotes)
+        kw['pos'] = m.group('pos') or None
+        # FIXME: root, fn!
+        rem = line[m.end(0):].strip()
+        forms, rem = parse_protoform(rem, kw['protolanguage'])
+        "('‘?["
+        if rem.startswith('?'):
+            kw['pfdoubt'] = True
+            rem = rem[1:].strip()
+            if rem:
+                assert rem[0] in "('‘["
+
+        rem, fn, fnpos = strip_footnote_reference(rem)
+        if rem:
+            assert rem[0] in "('‘"
+
+        rem, gpos = strip_pos(rem)
+
+        cmt, rem = strip_comment(rem, 'start')
+        if rem:
+            assert rem[0] in "('‘", line  # There might be a third bracketed item, source.
+
+            if rem[0] == '(':
+                src, rem = strip_comment(rem, 'start')
+            if rem:
+                assert rem[0] in "'‘", line
+                # Now consume the gloss.
+                kw['glosses'] = [next(iter_glosses(rem))]
+
+        kw['forms'] = forms
         return cls(**kw)
 
 
@@ -130,23 +109,29 @@ class Reflex:
             fnref, _, rem = rem.partition(']')
             # FIXME: handle footnote.
         rem = rem.strip()
-        if rem.startswith('|'):
-            # multi word marker
+        if rem.startswith('|'):  # multi word marker
             assert rem.count('|') == 2, rem
             word, _, rem = rem[1:].strip().partition('|')
             rem = rem.strip()
+            words = word.split()
         else:
             rem_comps = rem.split()
             word, comma = rem_comps.pop(0), None
             if word.endswith(','):
                 word = word[:-1]
                 comma = True
-            for c in word:
-                if c not in ''.join(POC_GRAPHEMES) + TRANSCRIPTION:
-                    raise ValueError(c, rem, line)
+            words = [word]
             if comma:
-                word += ', {}'.format(rem_comps.pop(0))
+                w2 = rem_comps.pop(0)
+                words.append(w2)
+                word += ', {}'.format(w2)
             rem = ' '.join(rem_comps)
+
+        for w in words:
+            for c in iter_graphemes(w):
+                if c != ',':
+                    if c not in POC_GRAPHEMES + TRANSCRIPTION:
+                        raise ValueError(c, rem, line)
 
         gloss = next(iter_glosses(rem))
 
@@ -165,11 +150,12 @@ class Reconstruction:
 
     @classmethod
     def from_data(cls, langs, **kw):
-        #if any('*soka, *soka-i-' in line for line in kw['protoforms']):
+        # if any('*soka, *soka-i-' in line for line in kw['protoforms']):
         #    for l in kw['reflexes']:
         #        print(l)
         kw['protoforms'] = [Protoform.from_line(pf) for pf in kw['protoforms']]
-        reflexes = [Reflex.from_line(langs, line, cf) for line, cf, proto in kw['reflexes'] if not proto]
+        reflexes = [Reflex.from_line(langs, line, cf) for line, cf, proto in kw['reflexes'] if
+                    not proto]
         for line, cf, proto in kw['reflexes']:
             if proto:
                 try:
@@ -191,7 +177,7 @@ class Reconstruction:
 """.format(self.cat1, self.cat2, self.page,
            '\n'.join(str(pf) for pf in self.protoforms),
            '\n'.join(str(w) for w in self.reflexes),
-           #'\n\n'.join(self.desc)
+           # '\n\n'.join(self.desc)
            )
 
 

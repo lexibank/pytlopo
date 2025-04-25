@@ -1,5 +1,83 @@
+import re
+
 # Graphemes used in reconstructions of POc:
 POC_GRAPHEMES = "w p b m i e t d s n r dr l a ā c j y u o k g q R ŋ ñ pʷ bʷ mʷ".split()
+TRANSCRIPTION = [
+    'N', 'ɸ', 'h', 'pʰ', 'kʰ', 'nʰ', 'mʰ', 'tʰ', 'bˠ', 'ᵑk', 'h́', 'ᵐb', 'ᵑr',
+    'á', 'ˀa',
+    'à',
+    'ā',
+    'ã',
+    'æ',
+    'ǣ',
+    'ɒ',
+    'ɒ̄',
+    'f',
+    'z',
+    'ʔ',
+    'ð',
+    'g', 'gʷ', 'ᵑg', 'qʷ', 'tʷ', 'lʷ', 'ḷʷ', 'vʷ', 'ᵑgʷ',
+    '(', ')', '[', ']', '<', '>', '-',
+    'ɣ',
+    'ɔ̀',
+    'ɔ',
+    'ɔ̄',
+    'v',
+    'ø',
+    'ö',
+    'ō',
+    'ò',
+    'ó',
+    'î',  # i circumflex
+    'ĩ',  # i tilde
+    'ì',  # i grave
+    'ī',  # i macron
+    'ɨ',
+    'í',
+    'I',
+    'ɨ̈',
+    'ı',
+    'ʈ',
+    't',
+    'x',
+    'θ',
+    'b',
+    'ŋ', 'ŋʷ',
+    'ɳ',
+    'è',
+    'ɛ', 'ɛ́', 'ɛ̃', "ɛ̄", 'ɛ̃́', 'ɛ̀',
+    'ə̄',
+    'é',
+    'ē',
+    'ê',
+    'ə',
+    'ū',
+    'ü',
+    'ù',
+    'ú',
+    'ʉ',
+    'ñ',
+    'm̀',
+    'ṣ',
+    'ẓ',
+    'ḍ',
+    'ʃ',
+    'č',
+    'c̣',
+    'ɬ',
+    'ʌ',
+    'ḷ',
+    'ȴ',
+    'l̥',
+    'ʋ',
+    'v̈',
+    'ɯ',
+    'β',  # LATIN SMALL LETTER TURNED M - used as superscript!
+    'ṛ',
+    'r̃',
+    'ɾ',
+    'ɽ',
+]
 
 GROUPS = [
     # Oceanic:
@@ -102,3 +180,17 @@ POS = [
     'R',
     'RELATIONAL N',
 ]
+
+
+def re_choice(items):
+    return r'|'.join(re.escape(i) for i in items)
+
+
+proto_pattern = re.compile(r'(\((?P<relno>[0-9])\)\s*)?'
+                           r'(?P<pl>({}))\s+'
+                           r'(?P<root>root\s+)?'
+                           r'(?P<pldoubt>\((POC)?\?\)\s*)?'
+                           r'(?P<pos>\(({})\)\s*)?'
+                           r'(?P<fn>\[[0-9]+]\s+)?'
+                           r'(?P<pfdoubt>\?)?\*'.format(re_choice(PROTO), re_choice(POS)))
+witness_pattern = re.compile(r'\s+({})(\s*:\s+)'.format(re_choice(GROUPS)))
