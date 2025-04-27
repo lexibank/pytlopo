@@ -5,12 +5,15 @@ import re
 import functools
 import dataclasses
 
+from pycldf.sources import Sources
+
 from .config import TRANSCRIPTION, proto_pattern, witness_pattern
 from pytlopo.parser.forms import (
-    parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes, glosses_and_note,
+    parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes,
     strip_footnote_reference, strip_comment, strip_pos,
 )
 from pytlopo.parser.lines import extract_etyma
+from pytlopo.parser import refs
 
 
 @dataclasses.dataclass
@@ -186,6 +189,24 @@ class Volume:
         self.dir = d
         self.langs = langs
 
+    #
+    # FIXME:
+    # - access references.bib
+    # - search/replace refs in text
+    #
+    @functools.cached_property
+    def sources(self):
+        return Sources.from_file(self.dir / 'references.bib')
+
+    @functools.cached_property
+    def source_pattern_dict(self):
+        return {src.id: refs.key_to_regex(src['key']) for src in self.sources}
+
+    def replace_refs(self, s):
+        for srcid, pattern in self.source_pattern_dict.items():
+            for m in pattern.finditer(s):
+                print(m.string[m.start():m.end()])
+
     @functools.cached_property
     def reconstructions(self):
         return list(self._iter_reconstructions(
@@ -209,6 +230,10 @@ class Volume:
                     raise ValueError(line)
 
             assert protoforms, paras
+
+            for p in desc:
+                self.replace_refs(p)
+
             yield Reconstruction.from_data(
                 self.langs,
                 cat1=h1, cat2=h2, protoforms=protoforms, reflexes=reflexes, page=pageno, desc=desc)
