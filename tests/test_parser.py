@@ -37,6 +37,23 @@ list(iter_graphemes('buar̃a'))
 
 
 @pytest.mark.parametrize(
+    's,r',
+    [
+        ("[1] 'gloss'", lambda g: g['fn'] == '1'),
+        ("'gloss' [7]", lambda g: g['fn'] == '7'),
+        ("(V) 'gloss'", lambda g: g['pos'] == 'V'),
+    ]
+)
+def test_iter_glosses(s, r):
+    g = next(iter_glosses(s))
+    assert r(g)
+
+
+def test_iter_glosses_multiple():
+    assert len(list(iter_glosses("'a'; 'b'; 'c' ('x'; y)"))) == 3
+
+
+@pytest.mark.parametrize(
     'i,o',
     [
         ("bubuŋ (Dempwolff 1938) 'ridgepole'", (["bubuŋ"], "(Dempwolff 1938) 'ridgepole'")),
@@ -73,9 +90,9 @@ comment.
 """
     h1, h2, h3, pageno, et = list(extract_etyma(lines.split('\n')))[0]
     assert pageno == 49
-    assert h1 == 'H1'
-    assert h2 == 'H2'
-    assert h3 == 'H3'
+    assert h1 == 'Ch. 1. H1'
+    assert h2 == 'Ch. 1, §1. H2'
+    assert h3 == 'Ch. 1, §1.1. H3'
     forms, pre, post = et
     assert post[0] == 'comment.'
     forms, cfs = forms

@@ -1,5 +1,8 @@
 import re
 
+
+fn_pattern = re.compile(r'\[(?P<fn>[0-9]+)]')  # [2]
+
 # Graphemes used in reconstructions of POc:
 POC_GRAPHEMES = "w p b m i e t d s n r dr l a ā c j y u o k g q R ŋ ñ pʷ bʷ mʷ".split()
 TRANSCRIPTION = [
@@ -16,7 +19,7 @@ TRANSCRIPTION = [
     'z',
     'ʔ',
     'ð',
-    'g', 'gʷ', 'ᵑg', 'qʷ', 'tʷ', 'lʷ', 'ḷʷ', 'vʷ', 'ᵑgʷ',
+    'g', 'gʷ', 'ᵑg', 'qʷ', 'tʷ', 'lʷ', 'ḷʷ', 'vʷ', 'ᵑgʷ', 'kʷ',
     '(', ')', '[', ']', '<', '>', '-',
     'ɣ',
     'ɔ̀',
@@ -151,6 +154,7 @@ POS = [
     'N, N LOC',
     'N, ? N LOC',
     'N, V',
+    'N. V',
     'N, v',
     'N,V',
     'N LOC',
@@ -175,6 +179,7 @@ POS = [
     'PASS',
     'postposed particle',
     'PREP',
+    'PRO',
     'POSTPOSITION',
     'R-',
     'R',

@@ -21,14 +21,16 @@ import re
 import typing
 import unicodedata
 
-from pytlopo.config import PROTO, POC_GRAPHEMES, POS, re_choice
+from pytlopo.config import PROTO, POC_GRAPHEMES, POS, re_choice, fn_pattern
 
-__all__ = ['iter_graphemes', 'parse_protoform', 'strip_comment', 'strip_footnote_reference']
+__all__ = [
+    'iter_graphemes', 'parse_protoform', 'strip_comment', 'strip_footnote_reference',
+    'iter_glosses',
+]
 
-pos_pattern = re.compile(r'\s*\((?P<pos>{})\)\s*'.format(re_choice(POS)))
+pos_pattern = re.compile(r'\s*\((?P<pos>{})\s?\)\s*'.format(re_choice(POS)))
 
-fn_pattern = re.compile(r'\[(?P<fn>[0-9]+)]')  # [2]
-gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|E. dialect)\s*\)\s*')  # ( 1 )
+gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|2|3|ii|iii|iv)\s*\)\s*')  # ( 1 )
 
 
 def strip_pos(rem):
@@ -39,14 +41,15 @@ def strip_pos(rem):
         pos = m.group('pos')
     return rem, pos
 
-def strip_footnote_reference(rem):
+
+def strip_footnote_reference(rem, start_only=False):
     fn, position = None, None
     m = fn_pattern.match(rem)
     if m:
         fn = m.group('fn')
         rem = rem[m.end():].strip()
         position = 'start'
-    else:
+    elif not start_only:
         m = fn_pattern.search(rem)
         if m and m.end() == len(rem):  # strip footnote from end.
             fn = m.group('fn')
@@ -129,11 +132,20 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
     if f.startswith('|'):  # multi-word protoform
         assert '|' in f[1:]
         f, _, rem = f[1:].partition('|')
-        return (
-            [' '.join(
-                parse_protoform(word, pl, allow_rem=False)[0][0]
-                for word in f.strip().split())],
-            rem.strip())
+        forms = [
+            ' '.join(parse_protoform(word, pl, allow_rem=False)[0][0]
+            for word in f.strip().split())]
+        # FIXME: rem may start with ", *" meaning there's another protoform!
+        rem = rem.strip()
+        if rem.startswith(',') and rem[1:].strip().startswith('*'):
+            words = rem[1:].strip()[1:].split()
+            forms.append(parse_protoform(words[0], pl, allow_rem=False)[0][0])
+            rem = ' '.join(words[1:])
+        if rem.startswith('*'):
+            words = rem[1:].split()
+            forms.append(parse_protoform(words[0], pl, allow_rem=False)[0][0])
+            rem = ' '.join(words[1:])
+        return (forms, rem.strip())
 
     if '((' in f:
         assert '))' in f
@@ -181,9 +193,7 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
         if rem.startswith('or '):
             assert rem[2:].strip().startswith('*')
             rem = rem[2:].strip()
-        pos2 = None
-        if pos_pattern.match(rem) and rem.partition(')')[2].strip().startswith('*'):
-            rem, pos2 = strip_pos(rem)
+
         if rem.startswith('*'):
             # FIXME: add pos spec to forms!
             # PWOc (N LOC) *pa, (ADV) *qa-pa ‘to one’s left when facing the sea’
@@ -196,136 +206,58 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
     return forms, rem
 
 
-def glosses_and_note(s, quotes="''"):
-    """
-    Chop off comma-separated glosses.
-    """
-    glosses = []
-    rem = s
-    while quotes[1] in rem:
-        gloss, _, rem = rem.partition(quotes[1])
-        assert gloss.strip(), s
-        glosses.append(gloss.strip())
-        rem = rem.strip()
-        if rem.startswith(","):
-            rem = rem[1:].strip()
-        if rem.startswith(quotes[0]):
-            assert quotes[1] in rem[1:], s
-            rem = rem[1:].strip()
-        else:
-            break
-    return glosses, rem.strip()
-
-
-def iter_bracketed_and_gloss(s, quotes):
-    i = 0
-    while s:
-        assert s.startswith('('), s
-        br, _, rem = s[1:].partition(')')
-        w, _, rem = rem.partition(quotes[0])
-        assert not w.strip()
-        gl, _, rem = rem.partition(quotes[1])
-        yield br.strip(), gl.strip()
-        s = rem.strip().lstrip(';').strip()
-        i += 1
-        if i > 10:
-            raise ValueError(s)
-
-
 def get_quotes(s):
     return "‘’" if "‘" in s else "''"
 
 
 def iter_glosses(s):
+    from clldutils.text import split_text_with_context
     quotes = "‘’" if "‘" in s else "''"
 
-    def make_gloss(pos=None, gloss=None, fn=None, comment=None, qualifier=None, uncertain=False):
-        return dict(
-            pos=pos,
-            gloss=gloss.replace("__s", quotes[1]) if gloss else gloss,
-            fn=fn, comment=comment, qualifier=qualifier, uncertain=bool(uncertain))
-
-    gloss, pos, qualifier, fn, uncertain, comment = None, None, None, None, False, None
+    gloss, pos, qualifier, fn, uncertain, comments = None, None, None, None, False, []
     rem = s
     rem = re.sub(r"(?P<c>[a-z\.]){}s".format(quotes[1]), lambda m: m.group('c') + "__s", rem)
-    done = False
+
+    chunks = split_text_with_context(rem, ";", brackets={"(": ")", "'": "'", "‘": "’"})
+    if len(chunks) > 1:
+        # make sure not to match "';" in brackets!
+        for chunk in chunks:
+            yield from iter_glosses(chunk)
+        return
+
+    if rem.startswith('(?)'):
+        uncertain = True
+        rem = rem[3:].strip()
 
     m = pos_pattern.match(rem)
     if m:
-        # (N) 'stem' ; (V ) 'steer (a boat from the stem)'
-        if re.fullmatch(r"(\([^)]+\)\s*{0}[^{1}]+{1}\s*;?\s*)+".format(quotes[0], quotes[1]), rem):
-            for br, gl in iter_bracketed_and_gloss(rem, quotes):
-                yield make_gloss(pos=br.replace('v', 'V'), gloss=gl)
-            return
         pos = m.group('pos')
         rem = rem[m.end():].strip()
 
     m = gloss_number_pattern.match(rem)
     if m:
-        # FIXME: assign glosses with number and comment
-        # FIXME: must handle
-        # (E. dialect) 'shed for yams'; (W. dialect) 'house with one side of roof only, made in garden' ; 'a shrine, small house on poles' (= _hare ni asi_)
-        if re.fullmatch(r"(\([^)]+\)\s*'[^']+'\s*;?\s*)+", rem):
-            for br, gl in iter_bracketed_and_gloss(rem, quotes):
-                yield make_gloss(qualifier=br.replace('v', 'V'), gloss=gl)
-            return
         qualifier = m.group('qualifier')
         rem = rem[m.end():].strip()
 
     rem, fn, fnpos = strip_footnote_reference(rem)
     if rem.startswith('?'):
         uncertain = True
-        rem = rem[1].strip()
+        rem = rem[1:].strip()
 
-    for src in [
-        '(Lewis, 1978:33)',
-        '(Chowning)',
-        '(Elbert 1972)',
-        '(Lichtenberk 1994)',
-        '(ACD)',
-        '(Grace 1969)',
-        '(Horridge)',
-    ]:
-        if rem.endswith(src):
-            # FIXME: store source
-            rem = rem.replace(src, '').strip()
-
-    if rem.startswith('(') and rem.endswith(')'):
-        comment = rem[1:-1].strip()
-        rem = ''
-
-    # consume comment or source from the end.
-    bcomment, rem = strip_comment(rem)
-    assert not (comment and bcomment), s
-    comment = comment or bcomment
+    # consume up to two comments from the end.
+    comment, rem = strip_comment(rem.strip())
+    if comment:
+        comments.append(comment)
+    comment, rem = strip_comment(rem.strip())
+    if comment:
+        comments.append(comment)
 
     if rem:
-        assert rem[0] == quotes[0], s
-        assert rem[-1] == quotes[1], s
-        # FIXME: assertion below will work once the two cases above are handled!
-        # assert rem[0] == "'" and rem[-1] == "'", line
-        if quotes[0] in rem[1:-1]:
-            # FIXME: deal with these cases!
-            #print(rem, s)
-            pass
+        assert rem.startswith(quotes[0]) and rem.endswith(quotes[1]), s
+        assert quotes[0] not in rem[1:-1], rem
+        gloss = rem[1:-1].strip()
 
-    maybe_gloss = rem
-    if "'" in maybe_gloss:
-        assert maybe_gloss.count("'") >= 2, s
-    stuff, _, maybe_gloss = maybe_gloss.partition(quotes[0])
-    if maybe_gloss.strip():
-        gloss, rem = glosses_and_note(maybe_gloss[1:], quotes)
-        if rem:
-            # FIXME: Categories:
-            # if rem.startswith(';') -> additional gloss in reflexes
-            # if rem.startswith('*') -> additional proto-form
-            #if rem[0] not in '*;':
-            #    print(rem, s)
-            pass
-        gloss = gloss[0]  # FIXME: There may be more!
-    if 0:  # stuff.strip():
-        if not pos_pattern.fullmatch(stuff) and not gloss_number_pattern.fullmatch(stuff):
-            # next part is a question mark, a footnote reference or a comment.
-            assert stuff[0] in '?[(', stuff
-            # print(words, line)
-    yield gloss
+    yield dict(
+            pos=pos,
+            gloss=gloss.replace("__s", quotes[1] + 's') if gloss else gloss,
+            fn=fn, comments=comments or [], qualifier=qualifier, uncertain=bool(uncertain))
