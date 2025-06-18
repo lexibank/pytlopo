@@ -18,6 +18,13 @@ import re
 # §4.1.1      -> add chapter!, remove 4th-level hierarchy
 # Ch 4, §4.1
 
+# (vol. 1, p.247)
+# (vol. 1, pp.293–294)
+# vol.1, ch.6, §5.6
+# vol.1 (ch.6, §5.6)
+# (vol.1, p.80)
+# (vol.1:155)
+
 CROSS_REF_PATTERN = re.compile(
     r'(Ch(apter|\.)?\s+(?P<chapter>[0-9]+),\s*)?'
     r'§\s*(?P<section>[0-9]+)'
@@ -55,61 +62,80 @@ def search(s, *keys):
 
 def repl_ref(srcid, m):
     matched_string = m.string[m.start():m.end()]
+
+    # Figure out if we are already within a link label!
+    for i in range(30):
+        c = m.string[m.start() - i - 1]
+        if c == ']':
+            break
+        if c == '[':
+            # We are in a link label! Don't replace anything!
+            return matched_string
+
     if '(' in matched_string:
         a, _, y = matched_string.partition('(')
         return "[{1}](Source#cldf:{0}) ([{2}](Source#cldf:{0})".format(srcid, a.strip(), y)
-    return "[{1}](Source#cldf:{0})".format(srcid, matched_string)
+    if ' ' in matched_string or all(c.isupper() for c in matched_string):
+        return "[{1}](Source#cldf:{0})".format(srcid, matched_string)
+    return matched_string
 
 
-def refs2bib():
-    import re
-    from clldutils.source import Source
+def refs2bib(lines):
     from clldutils.misc import slug
-    refs, key = [], None
-    for i, line in enumerate(
-            self.raw_dir.joinpath('vol1', 'references.bib').read_text(encoding='utf-8').split('\n'),
-            start=1):
-        if i % 2 == 1:
-            key = line
+    refs, author = [], None
+    keys = set()
+    for i, line in enumerate(lines, start=1):
+        if re.match(r'—\s*,', line):
+            assert author
+            author, dis, src = line2bibtex(i, re.sub(r'^—\s*,\s*', author + ' ', line))
         else:
-            assert key
-            refs.append((key, line))
-    bib = []
-    for key, line in refs:
-        line = re.sub(
-            r'1\s*(?P<a>[0-9])\s*(?P<b>[0-9])\s*(?P<c>[0-9])(?P<d>[abcde])?\s*,',
-            lambda m: '1{}{}{}{},'.format(m.group('a'), m.group('b'), m.group('c'),
-                                          m.group('d') or ''),
-            line)
-        m = re.search(r'(?P<year>([0-9]{4}|forthcoming|n\.d\.|in press))', line)
-        assert m
-        assert m.group('year') in key
-        author = line[:m.start()].strip()
-        edp = re.compile(r'\s+ed(s)?\.?,?\s*$')
-        ctype = 'author'
-        if edp.search(author):
-            ctype = 'editor'
-            author = author[:m.start()].strip()
-        if author.endswith(','):
-            author = author[:-1].strip()
-        genre = 'misc'
-        kw = {ctype: author, 'year': m.group('year'), 'key': key}
-
-        rem = line[m.end():].strip()
-        if rem.startswith(','):
-            rem = rem.lstrip(',').strip()
-        inm = re.search(r'\.\s+In\s+', rem)
-        if inm:
-            edm = re.search(r',\s+eds?\.?\s*,\s*', rem[inm.end():])
-            if edm:
-                assert ctype == 'author'
-                kw['editor'] = rem[inm.end():inm.end() + edm.start()].replace('1', 'I')
-                genre = 'incollection'
-                kw['booktitle'] = rem[inm.end() + edm.end():].strip().rstrip('.').strip()
-                rem = rem[:inm.start()].strip()
-
-        rem.rstrip('.')
-        kw['title'] = rem
-        src = Source(genre, slug(key, lowercase=False), **kw)
+            author, dis, src = line2bibtex(i, line)
+        key = src.refkey(year_brackets=None) + (dis or '')
+        if key == 'Clark 1973' and 'Herbert' in line:
+            key = 'H. Clark 1973'
+        assert slug(key) not in keys, (key, line, author)
+        keys.add(slug(key))
+        src['key'] = key
+        src.id = slug(key, lowercase=False)
         print(src.bibtex())
-    return
+
+
+def line2bibtex(i, line):
+    from pycldf.sources import Source
+    bib = []
+    m = re.search(r'(?P<year>([0-9]{4}(\-[0-9]+)?(a|b)?)|forthcoming|n\.d\.|in press|in preparation|In progress)', line)
+    assert m, line
+    raw_author = line[:m.start()].strip()
+    author = raw_author
+    disambiguation = None
+
+    edp = re.compile(r'\s+ed(s)?\.?,?\s*$')
+    ctype = 'author'
+    if edp.search(author):
+        ctype = 'editor'
+        author = author[:m.start()].strip()
+    if author.endswith(','):
+        author = author[:-1].strip()
+    genre = 'misc'
+    kw = {ctype: author, 'year': m.group('year')}
+
+    rem = line[m.end():].strip()
+    if rem[0] in "abcdefgh":
+        disambiguation, rem = rem[0], rem[1:].strip()
+
+    if rem.startswith(','):
+        rem = rem.lstrip(',').strip()
+    inm = re.search(r'\.\s+In\s+', rem)
+    if inm:
+        edm = re.search(r',\s+eds?\.?(\s*,)?\s+', rem[inm.end():])
+        if edm:
+            assert ctype == 'author', line
+            kw['editor'] = rem[inm.end():inm.end() + edm.start()].replace('1', 'I')
+            genre = 'incollection'
+            kw['booktitle'] = rem[inm.end() + edm.end():].strip().rstrip('.').strip()
+            rem = rem[:inm.start()].strip()
+
+    rem.rstrip('.')
+    kw['title'] = rem.lstrip('.').strip()
+    src = Source(genre, str(i), **kw)
+    return raw_author, disambiguation, src

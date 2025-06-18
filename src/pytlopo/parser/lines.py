@@ -2,6 +2,10 @@
 Parse line-level markup.
 """
 import re
+import functools
+
+from tabulate import tabulate
+from clldutils.html import HTML
 
 from pytlopo.config import proto_pattern, witness_pattern, fn_pattern
 
@@ -11,7 +15,8 @@ h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 
-figure_pattern = re.compile(r'Figure\s+[0-9]+[a-z]*:')
+figure_pattern = re.compile(r'Figure\s+[0-9]+[a-z]*(\.[0-9])?:')
+map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9])?):')
 
 
 def is_forms_line(line):
@@ -41,25 +46,22 @@ def formblock(lines):
     return reg, cfs
 
 
-def etymon(paras):
-    pre, forms, post = [], [], []
-    for para in paras:
-        m = proto_pattern.match(para[0])
-        if m:
-            assert not forms
-            for line in para:
-                assert is_forms_line(line), line
-            forms = formblock(para)
-            continue
-        if forms:
-            post.append(para)
-        else:
-            pre.append(para)
+def etymon(block):
+    for line in block:
+        assert is_forms_line(line), line
+    forms = formblock(block)
     assert forms
-    return forms, [' '.join(line.strip() for line in para) for para in pre], [' '.join(line.strip() for line in para) for para in post]
+    return forms
 
 
-def make_paragraph(lines):
+def igt_group(lines):
+    return lines
+    assert len(lines) % 3 == 1
+    assert re.match(r'\([0-9]+\)', lines[0])
+    return lines[0], [lines[i:i + 3] for i in range(0, len(lines), 3)]
+
+
+def make_paragraph(lines, voldir):
     """
     Lines starting with "|" are a quote.
     If first line is __ul__ ...
@@ -67,13 +69,47 @@ def make_paragraph(lines):
     Figure ...
     Map ...
     """
-    if lines[0].startswith('|'):
+    if lines[0].startswith('|') or lines[0] == '__blockquote__':
         return '> {}'.format(' '.join(line.lstrip('|').strip() for line in lines))
+    if lines[0] == '__formgroup__':
+        for line in lines[1:]:
+            assert is_forms_line(line) or '**' in line, line
+        #print(len(line[1:]))
+        return '\n'.join('' if line.strip() == '#' else line for line in lines[1:])
     if lines[0] == '__ul__':
-        return '\n'.join('- {}'.format(line) for line in lines[1:])
+        return '\n'.join('- {}'.format(line.strip()) for line in lines[1:])
+    if lines[0] == '__block__':
+        return '\n'.join('' if line.strip() == '#' else line for line in lines[1:])
+    if len(lines) > 1 and lines[1].strip().startswith(':'):
+        # A definition list
+        return '\n'.join(lines)
     if lines[0] == '__pre__':
         return "```\n{}\n```".format('\n'.join(lines[1:]))
-    return ' '.join(lines)
+    if lines[0] == '__table__':
+        return tabulate(
+            [[s.strip() or ' ' for s in l.split('|')] for l in lines[2:]],
+            headers=[s.strip() or ' ' for s in lines[1].split('|')],
+            tablefmt='pipe')
+    if lines[0] == '__tablenh__':
+        return tabulate(
+            [[s.strip() or ' ' for s in l.split('|')] for l in lines[1:]],
+            headers=[' '] * len(lines[1].split('|')),
+            tablefmt='pipe')
+    # __formset__, figure, map. __html__
+    m = map_pattern.match(lines[0])
+    if m:
+        mtype = 'map' if m.group('type').lower() == 'map' else 'fig'
+        p = voldir / 'maps' / '{}_{}.png'.format(mtype, m.group('num'))
+        if p.exists():
+            print(p)
+            caption = ' '.join(l.strip() for l in lines)
+            return """\
+<a id="{}-{}"> </a>
+
+![{}](../../raw/{}/maps/{})
+
+""".format(mtype, m.group('num'), caption, voldir.name, p.name)
+    return ' '.join(l.strip() for l in lines)
 
 
 def make_chapter(paras):
@@ -89,7 +125,7 @@ def make_chapter(paras):
     return '\n\n'.join(regular + ['\n## Notes'] + endnotes)
 
 
-def iter_chapters(lines):
+def iter_chapters(lines, voldir):
     pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
     pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
     # replace page numbers with anchors p-...
@@ -118,69 +154,71 @@ def iter_chapters(lines):
 
         m = h2_pattern.match(line)
         if m:
-            chapter.append('\n<a id="s-{0}"></a>\n## {0}. {1}\n'.format(m.group('b'), m.group('title')))
+            chapter.append('\n<a id="s-{0}"></a>\n\n## {0}. {1}\n'.format(m.group('b'), m.group('title')))
             continue
 
         m = h3_pattern.match(line)
         if m:
-            chapter.append('\n<a id="s-{0}-{1}"></a>\n## {0}.{1}. {2}\n'.format(m.group('b'), m.group('c'), m.group('title')))
+            chapter.append('\n<a id="s-{0}-{1}"></a>\n\n### {0}.{1}. {2}\n'.format(m.group('b'), m.group('c'), m.group('title')))
             continue
 
-        line = line.strip()
-        if not line:
+        if not line.strip():
             if para:
-                chapter.append(make_paragraph(para))
+                chapter.append(make_paragraph(para, voldir))
                 para = []
         else:
             para.append(line)
 
     if para:
-        chapter.append(make_paragraph(para))
+        chapter.append(make_paragraph(para, voldir))
     yield in_chapter, make_chapter(chapter)
 
 
-def extract_etyma(lines):
+def extract_blocks(lines, factory=etymon, start='<', end='>'):
     pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
     pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
     pageno = -1
-    paras, para = [], []
+    block = []
     h1, h2, h3 = None, None, None
-    in_etymon = False
+    in_block = False
 
     new_lines = []
     for i, line in enumerate(lines, start=1):
         m = pageno_left_pattern.fullmatch(line) or pageno_right_pattern.fullmatch(line)
         if m:  # Page number line.
             pageno = int(m.group('no'))
-            assert not in_etymon, pageno
+            assert not in_block, pageno
             new_lines.append(line)
             continue
 
         if not line:  # Empty line.
-            if not in_etymon:
+            if not end and in_block:  # implicit end of block
+                assert block, i
+                etymon_id = yield h1, h2, h3, pageno, factory(block)
+                in_block = False
+                new_lines.append(etymon_id)
+                new_lines.append('')
+                continue
+
+            #assert not in_block, pageno
+            if not in_block:
                 new_lines.append(line)
-            else:  # An empty line delimits paragraphs.
-                if para:
-                    paras.append(para)
-                para = []
             continue
 
-        if line == '<':  # Etymon start marker.
-            assert not in_etymon, i
-            in_etymon = True
-            paras, para = [], []
+        if line == start:  # Etymon start marker.
+            assert not in_block, i
+            in_block = True
+            block = []
             continue
-        if line == '>':  # Etymon end marker.
-            if para:
-                paras.append(para)
-            assert paras, i
-            etymon_id = yield h1, h2, h3, pageno, etymon(paras)
-            assert in_etymon
-            in_etymon = False
+        if end and line == end:  # Etymon end marker.
+            assert block, i
+            etymon_id = yield h1, h2, h3, pageno, factory(block)
+            assert in_block, i
+            in_block = False
             new_lines.append(etymon_id)
             continue
 
-        if not in_etymon:
+        if not in_block:
             m = h1_pattern.match(line)
             if m:
                 h1 = (m.group('a'), m.group('title'))
@@ -188,7 +226,7 @@ def extract_etyma(lines):
             else:
                 m = h2_pattern.match(line)
                 if m:
-                    assert m.group('a') == h1[0], line
+                    assert m.group('a') == h1[0], (line, h1)
                     h2 = (m.group('b'), m.group('title'))
                     h3 = None
                 else:
@@ -198,5 +236,10 @@ def extract_etyma(lines):
                         h3 = (m.group('c'), m.group('title'))
             new_lines.append(line)
         else:
-            para.append(line)
+            block.append(line)
     return new_lines
+
+
+extract_etyma = extract_blocks
+extract_igts = functools.partial(extract_blocks, factory=igt_group, start='__igt__', end=None)
+extract_formgroups = functools.partial(extract_blocks, factory=lambda lines: lines, start='__formgroup__', end=None)

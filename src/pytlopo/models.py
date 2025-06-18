@@ -4,6 +4,7 @@
 import re
 import typing
 import functools
+import collections
 import dataclasses
 
 from pycldf.sources import Sources, Source
@@ -14,8 +15,89 @@ from pytlopo.parser.forms import (
     parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes,
     strip_footnote_reference, strip_comment, strip_pos, pos_pattern
 )
-from pytlopo.parser.lines import extract_etyma, iter_chapters
+from pytlopo.parser.lines import extract_etyma, iter_chapters, extract_igts, extract_formgroups
 from pytlopo.parser import refs
+
+
+@dataclasses.dataclass
+class DataReference:
+    """
+    An object in the CLDF dataset, extracted from the raw data and re-inserted when rendering.
+    """
+    volume: str = None
+    chapter: tuple = None
+    section: tuple = None
+    subsection: tuple = None
+    page: int = 0
+
+    __table__ = None
+
+    def subkey(self):
+        return []
+
+    def key(self):
+        if not self.section:
+            print(self)
+            raise ValueError
+        return tuple([
+            self.volume,
+            self.chapter[0],
+            self.section[0] if self.section else None,
+            self.subsection[0] if self.subsection else None,
+            self.page,
+        ] + list(self.subkey()))
+
+    @property
+    def id(self):
+        return '-'.join(str(s) for s in self.key())
+
+    def __hash__(self):
+        return hash(self.key())
+
+    def cldf_markdown_link_label(self):
+        return self.id
+
+    def cldf_markdown_link(self):
+        return '[{}]({}#cldf:{})\n'.format(
+            self.cldf_markdown_link_label(), self.__table__, self.id)
+
+
+@dataclasses.dataclass
+class FormGroup(DataReference):
+    forms: list = None
+    __table__ = 'cf.csv'
+
+    def subkey(self):
+        f = self.forms[0]
+        return (slug(f.group), slug(f.lang), slug(f.forms[0]))
+
+    @classmethod
+    def from_data(cls, vol, h1, h2, h3, page, lines):
+        #if proto_pattern.match(line):
+        #    protoforms.append(line)
+        #elif witness_pattern.match(line):
+        #    reflexes.append((line, False, False))
+        forms = [Reflex.from_line(vol, line) for line in lines if witness_pattern.match(line)]
+        assert forms, (vol.num, lines)
+        return cls(
+            volume=str(vol.num),
+            chapter=h1,
+            section=h2,
+            subsection=h3,
+            page=page,
+            forms=forms,
+        )
+
+
+@dataclasses.dataclass
+class ExampleGroup(DataReference):
+    label: str = None
+    examples: list = None
+    __table__ = 'ExmpleTable'
+
+    @classmethod
+    def from_data(cls, vol, h1, h2, h3, page, lines):
+        return cls(lines[0], lines[1])
 
 
 @dataclasses.dataclass
@@ -56,11 +138,18 @@ def comment_or_sources(vol, cmt):
 @dataclasses.dataclass
 class Gloss:
     gloss: str
+    morpheme_gloss: str = None
     comment: str = None
     sources: typing.List[Reference] = None
     number: str = None
     pos: str = None
     fn: str = None
+
+    def key(self):
+        return (self.gloss, self.pos, self.comment)
+
+    def __hash__(self):
+        return hash(self.key())
 
     @classmethod
     def from_dict(cls, vol, d):
@@ -83,6 +172,7 @@ class Gloss:
             pos=d['pos'],
             gloss=d['gloss'],
             comment=d['comments'] or None,
+            morpheme_gloss=d['morpheme_gloss'],
             sources=d['sources'])
 
     def __str__(self):
@@ -94,24 +184,30 @@ class Gloss:
             ' [{}]'.format(self.fn) if self.fn else '',
         )
 
+@dataclasses.dataclass
+class Form:
+    lang: str
+    forms: typing.List[str]
+    glosses: typing.List[Gloss] = None
+
 
 @dataclasses.dataclass
-class Protoform:
+class Protoform(Form):
     """
     PEOc (POC?)[6] *kori(s), *koris-i- 'scrape (esp. coconuts), grate (esp. coconuts)
     """
-    forms: typing.List[str]
-    glosses: typing.List[Gloss]
-    protolanguage: str
     comment: str = None
     pfdoubt: bool = False
     pldoubt: bool = False
-    pos: str = None
     sources: typing.List[Reference] = None
+
+    @property
+    def form(self):
+        return ', '.join(self.forms)
 
     def __str__(self):
         return "{}\t{}\t{}{}\t{}".format(
-            self.protolanguage,
+            self.lang,
             ', '.join('*' + f for f in self.forms),
             '({})'.format(self.comment) if self.comment else '',
             '({})'.format(', '.join(str(s) for s in self.sources)) if self.sources else '',
@@ -126,24 +222,24 @@ class Protoform:
         m = proto_pattern.match(line)
         assert m
 
-        kw['protolanguage'] = m.group('pl')
+        kw['lang'] = m.group('pl')
         kw['pfdoubt'] = bool(m.group('pfdoubt'))
         kw['pldoubt'] = bool(m.group('pldoubt'))
-        kw['pos'] = m.group('pos') or None
+        pos = m.group('pos') or None
         # FIXME: root, fn!
         rem = line[m.end(0):].strip()
 
-        forms, rem = parse_protoform(rem, kw['protolanguage'])
+        forms, rem = parse_protoform(rem, kw['lang'])
         "('‘?["
         if rem.startswith('?'):
             kw['pfdoubt'] = True
             rem = rem[1:].strip()
             if rem:
-                assert rem[0] in "('‘["
+                assert rem[0] in "('‘[", line
 
         rem, fn, fnpos = strip_footnote_reference(rem, start_only=True)
         if rem:
-            assert rem[0] in "('‘", rem
+            assert rem[0] in "('‘[", rem
 
         cmt, rem = strip_comment(rem, 'start')
         if cmt == '1' or pos_pattern.fullmatch("({})".format(cmt)):
@@ -167,25 +263,31 @@ class Protoform:
             elif srcs:
                 kw['sources'] = srcs
         elif rem:
-            assert rem[0] in "'‘", line
+            assert rem[0] in "'‘[", line
 
         if rem:
             # Now consume the gloss.
-            kw['glosses'] = [Gloss.from_dict(vol, g) for g in iter_glosses(rem)]
+            kw['glosses'] = []
+            for i, g in enumerate(iter_glosses(rem)):
+                if i == 0 and pos:
+                    assert not g['pos'], line
+                    g['pos'] = pos
+                kw['glosses'].append(Gloss.from_dict(vol, g))
 
         kw['forms'] = forms
         return cls(**kw)
 
 
 @dataclasses.dataclass
-class Reflex:
-    group: str
-    lang: str
-    form: str
+class Reflex(Form):
+    group: str = None
     lfn: str = None  # Footnote with comment about the language.
     ffn: str = None  # Footnote with comment about the form.
-    glosses: typing.List[Gloss] = None
-    cf: bool = False
+    morpheme_gloss: str = None
+
+    @property
+    def form(self):
+        return self.forms[0]
 
     def __str__(self):
         return "\t{}: {}{}\t{}{}\t{}".format(
@@ -199,7 +301,7 @@ class Reflex:
         )
 
     @classmethod
-    def from_line(cls, vol, line, cf):
+    def from_line(cls, vol, line):
         lang, word, gloss, pos = None, None, None, None
         group, _, rem = line.partition(':')
         rem_words = rem.strip().split()
@@ -243,14 +345,16 @@ class Reflex:
 
         rem, ffn, pos = strip_footnote_reference(rem, start_only=True)
         assert lang, line
+        glosses = [Gloss.from_dict(vol, g) for g in iter_glosses(rem)]
+        assert len([g for g in glosses if g.morpheme_gloss]) < 2
         return cls(
             group=group.strip(),
             lang=' '.join(lg),
-            form=word,
-            glosses=[Gloss.from_dict(vol, g) for g in iter_glosses(rem)],
-            cf=cf,
+            forms=[word],
+            glosses=glosses,
             lfn=lfn,
             ffn=ffn,
+            morpheme_gloss=glosses[0].morpheme_gloss if glosses else None,
             #pos=pos,
             #comment=gloss['comment']
         )
@@ -267,30 +371,45 @@ def markdown_escape(s):
 
 
 @dataclasses.dataclass
-class Reconstruction:
-    protoforms: list
+class Reconstruction(DataReference):
     reflexes: list = None
-    chapter: tuple = None
-    section: tuple = None
-    subsection: tuple = None
-    page: int = 0
-    pre: list = None
-    post: list = None
     cfs: list = None
-    footnotes: dict = None
     disambiguation: str = 'a'
+
+    @functools.cached_property
+    def oceanic_protoforms(self):
+        return [
+            pf for pf in self.reflexes
+            if isinstance(pf, Protoform) and pf.lang != 'PAn' and not pf.lang.endswith('MP')]
+
+    @functools.cached_property
+    def first_oceanic_protoform(self):
+        if self.oceanic_protoforms:
+            return self.oceanic_protoforms[0]
+        return self.reflexes[0]
+
+    @property
+    def poc_gloss(self):
+        for pf in self.oceanic_protoforms:
+            if pf.glosses:
+                return pf.glosses[0].gloss
+            if pf.comment:
+                return pf.comment
+        return self.reflexes[0].glosses[0].gloss
 
     def key(self):
         if not self.section:
             print(self)
-            raise ValueError
+            raise ValueError(self)
+        pf = self.first_oceanic_protoform
         return (
+            self.volume,
             self.chapter[0],
             self.section[0] if self.section else None,
             self.subsection[0] if self.subsection else None,
             self.page,
-            slug(self.protoforms[0].protolanguage, lowercase=False),
-            slug(self.protoforms[0].forms[0]),
+            slug(pf.lang, lowercase=False),
+            slug(pf.forms[0]),
             self.disambiguation,
         )
 
@@ -302,83 +421,47 @@ class Reconstruction:
         return hash(self.key())
 
     def cldf_markdown_link(self):
-        return '[{} &ast;_{}_](CognatesetTable#cldf:{})\n'.format(
-            self.protoforms[0].protolanguage,
-            markdown_escape(self.protoforms[0].forms[0]),
+        return '[{} &ast;_{}_](cognatesetreferences.csv#cldf:{})\n'.format(
+            self.reflexes[0].lang,
+            markdown_escape(self.reflexes[0].forms[0]),
             self.id)
 
     @classmethod
-    def from_data(cls, vol, h1, h2, h3, pageno, paras):
-        forms, pre, post = paras
+    def from_data(cls, vol, h1, h2, h3, pageno, forms):
         forms, cfs = forms
 
-        protoforms = []
         reflexes = []
-        desc = pre + post
 
-        for line in forms:
+        def get_obj(line):
             if proto_pattern.match(line):
-                protoforms.append(line)
-            elif witness_pattern.match(line):
-                reflexes.append((line, False, False))
+                return Protoform.from_line(vol, line)
+            if witness_pattern.match(line):
+                return Reflex.from_line(vol, line)
             else:
                 raise ValueError(line)
 
-        assert protoforms, paras
+        reflexes = [get_obj(line) for line in forms]
+        assert isinstance(reflexes[0], Protoform)
 
-        for p in desc:
-            vol.replace_refs(p)
-
-        kw = dict(
-            terminology=(h1, h2, h3),
-            protoforms=protoforms,
-            reflexes=reflexes,
+        return cls(
+            volume=vol.num,
+            chapter=h1,
+            section=h2,
+            subsection=h3,
             page=pageno,
-            cfs=cfs,
-            pre=pre,
-            post=post,
+            reflexes=reflexes,
+            cfs=[(cfspec, [get_obj(line) for line in cf])  for cfspec, cf in cfs or []]
         )
-        kw['protoforms'] = [Protoform.from_line(vol, pf) for pf in kw['protoforms']]
-        reflexes = [Reflex.from_line(vol, line, cf) for line, cf, proto in kw['reflexes'] if
-                    not proto]
-        for line, cf, proto in kw['reflexes']:
-            if proto:
-                try:
-                    assert not cf, kw
-                    kw['protoforms'].append(Protoform.from_line(line))
-                except AssertionError:
-                    #
-                    # FIXME: what to do with protoforms in cf tables? Just list as reflexes in protolanguages?
-                    #
-                    pass
-        kw['cfs'] = [(cfspec, [Reflex.from_line(vol, line, True) for line in cf
-                               if not proto_pattern.match(line)  # FIXME!!!!
-                               ]) for cfspec, cf in kw['cfs'] or []]
-        kw['reflexes'] = reflexes
-        kw['footnotes'], post = {}, []
-        for par in kw['post']:
-            rem, fn, _ = strip_footnote_reference(par, start_only=True)
-            if fn:
-                kw['footnotes'][fn] = vol.replace_refs(rem)
-            else:
-                post.append(vol.replace_refs(par))
-        kw['post'] = post
-        kw['chapter'], kw['section'], kw['subsection'] = kw.pop('terminology')
-        return cls(**kw)
 
     def __str__(self):
         res = """\
 {} / {} / {} / Page {}
-{}
-{}
 {}
 """.format(
             '{0[0]}. {0[1]}'.format(self.chapter) if self.chapter else '',
             '{0[0]}. {0[1]}'.format(self.section) if self.section else '',
             '{0[0]}. {0[1]}'.format(self.subsection) if self.subsection else '',
            self.page,
-           '\n\n'.join(par.strip() for par in self.pre),
-           '\n'.join(str(pf) for pf in self.protoforms),
            '\n'.join(str(w) for w in self.reflexes),
         )
         if self.cfs:
@@ -386,25 +469,7 @@ class Reconstruction:
                 res += '  cf. also:{}\n'.format(' ' + cfspec if cfspec else '')
             for w in cf:
                 res += '{}\n'.format(str(w))
-        for i, par in enumerate(self.post):
-            res += ('\n' if i == 0 else '\n\n') + par
-        for k, v in (self.footnotes or {}).items():
-            res += '\n\n[{}] {}'.format(k, v)
         return res
-
-    def pre_note(self):
-        return '\n\n'.join(par.strip() for par in self.pre)
-
-    def post_note(self):
-        res = ''
-        for i, par in enumerate(self.post):
-            res += ('\n' if i == 0 else '\n\n') + par
-        for k, v in (self.footnotes or {}).items():
-            res += '\n\n[{}] {}'.format(k, v)
-        return res
-
-    def desc(self):
-        return self.pre_note() + self.post_note()
 
 
 def polish_text(text):
@@ -430,19 +495,21 @@ class Chapter:
         bib['title'] = md['title']
         bib['author'] = md['author']
         bib['pages'] = md['pages']
-        header = "# {}\n\nby {}\n\n".format(md['title'], md['author'])
+        header = "\n[{}](.smallcaps)\n\n".format(md['author'])
         return cls(polish_text(header + vol.replace_refs(text, num)), bib)
 
 
 class Volume:
-    def __init__(self, d, langs, bib):
+    def __init__(self, d, langs, bib, sources):
         self.dir = d
+        self.num = d.name[-1]
         self.langs = langs
         self.metadata = self.dir.read_json('md.json')
         self._lines = None
-        bib.id = 'tlopo{}'.format(d.name[-1])
-        bib['title'] += ' {}: {}'.format(d.name[-1], self.metadata['title'])
+        bib.id = 'tlopo{}'.format(self.num)
+        bib['title'] += ' {}: {}'.format(self.num, self.metadata['title'])
         self.bib = bib
+        self.sources = sources
 
     def __str__(self):
         return self.bib['title']
@@ -451,16 +518,7 @@ class Volume:
     def chapters(self):
         if not self._lines:
             assert self.reconstructions
-        return {num: Chapter.from_text(self, num, text) for num, text in iter_chapters(self._lines)}
-
-    #
-    # FIXME:
-    # - access references.bib
-    # - search/replace refs in text
-    #
-    @functools.cached_property
-    def sources(self):
-        return Sources.from_file(self.dir / 'references.bib')
+        return {num: Chapter.from_text(self, num, text) for num, text in iter_chapters(self._lines, self.dir)}
 
     @functools.cached_property
     def source_in_brackets_pattern_dict(self):
@@ -468,7 +526,10 @@ class Volume:
 
     @functools.cached_property
     def source_pattern_dict(self):
-        return {src.id: refs.key_to_regex(src['key']) for src in self.sources}
+        res = collections.OrderedDict()
+        for src in sorted(self.sources, key=lambda src: -len(src['key'])):
+            res[src.id] = refs.key_to_regex(src['key'])
+        return res
 
     def match_ref(self, s):
         if not s.startswith('('):
@@ -492,12 +553,45 @@ class Volume:
                 path = ''
             return '[{}]({}#{})'.format(re.sub(r'\s*\.\s*', '.', m.string[m.start():m.end()]), path, fragment)
 
+        #
+        # FIXME: look for (Source#cldf:Lynch1978a), 1980 ...
+        #
+        m = re.compile(r"\(Source#cldf:([^\)]+)\)(,\s*[0-9]+[a-z]?)+")
+
+        def repl(m):
+            link, *years = [s.strip() for s in m.string[m.start():m.end()].split(',')]
+            author, year, inyear = '', '', False
+            for c in link.partition(':')[2]:
+                if not inyear and c.isdigit():
+                    inyear = True
+                if inyear:
+                    year += c
+                else:
+                    author += c
+            res = link
+            for year in years:
+                if author + year in self.source_pattern_dict:
+                    res += ', [{}](Source#cldf:{})'.format(year, author + year)
+                else:
+                    res += ', {}'.format(year)
+            return res
+
+        s = m.sub(repl, s)
+
         return refs.CROSS_REF_PATTERN.sub(repl, s)
 
     @functools.cached_property
     def reconstructions(self):
         return list(self._iter_reconstructions(
             self.dir.joinpath('text.txt').read_text(encoding='utf8').split('\n')))
+
+    @functools.cached_property
+    def formgroups(self):
+        return list(self._iter_formgroups())
+
+    @functools.cached_property
+    def igts(self):
+        return list(self._iter_igts())
 
     def _iter_reconstructions(self, lines):
         rids = set()
@@ -516,3 +610,38 @@ class Volume:
                 yield rec
         except StopIteration as e:
             self._lines = e.value
+
+    def _iter_formgroups(self):
+        assert self.reconstructions
+        forms = extract_formgroups(self._lines)
+        try:
+            h1, h2, h3, pageno, block = next(forms)
+        except StopIteration:
+            return
+        fg = FormGroup.from_data(self, h1, h2, h3, pageno, block)
+        yield fg
+        try:
+            while True:
+                h1, h2, h3, pageno, block = forms.send(fg.cldf_markdown_link())
+                fg = FormGroup.from_data(self, h1, h2, h3, pageno, block)
+                yield fg
+        except StopIteration as e:
+            self._lines = e.value
+
+    def _iter_igts(self):
+        assert self.reconstructions
+        igts = extract_igts(self._lines)
+        try:
+            h1, h2, h3, pageno, block = next(igts)
+        except StopIteration:
+            return
+        eg = ExampleGroup.from_data(self, h1, h2, h3, pageno, block)
+        yield eg
+        try:
+            while True:
+                h1, h2, h3, pageno, block = igts.send(eg.cldf_markdown_link())
+                eg = ExampleGroup.from_data(self, h1, h2, h3, pageno, block)
+                yield eg
+        except StopIteration as e:
+            self._lines = e.value
+

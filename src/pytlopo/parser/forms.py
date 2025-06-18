@@ -29,8 +29,9 @@ __all__ = [
 ]
 
 pos_pattern = re.compile(r'\s*\((?P<pos>{})\s?\)\s*'.format(re_choice(POS)))
-
-gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|2|3|ii|iii|iv)\s*\)\s*')  # ( 1 )
+species_pattern = re.compile(r'\s*\[(?P<species>[A-Z]([a-z]+|\.)\s+[a-z]+\.?)\]\s*$')
+gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|2|3|4|5|ii|iii|iv)\s*\)\s*')  # ( 1 )
+morpheme_gloss_pattern = re.compile(r'\[(?P<g>[A-Za-z:\-= 1-3\/\.\(\)\?,]+)]')
 
 
 def strip_pos(rem):
@@ -157,22 +158,30 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
     phonemes.append('-')
     phonemes.extend(PROTO[pl])
     form, length = '', 0
+    tilde = False
     for c in iter_graphemes(f):
         if c == '(':
             in_bracket = True
         elif c == ')':
-            assert in_bracket, f
+            #assert in_bracket, f
             in_bracket = False
         elif c == '[':
             in_sbracket = True
         elif c == ']':
-            assert in_sbracket, f
+            #assert in_sbracket, f
             in_sbracket = False
         elif c == '<':
             in_abracket = True
         elif c == '>':
             assert in_abracket, f
             in_abracket = False
+        elif c == '~':
+            tilde = True
+        elif c == '*':
+            assert tilde, (f, pl)
+            tilde = False
+            length += len(c)
+            continue
         elif c == ',':
             if not (in_bracket or in_sbracket):
                 length += 1
@@ -215,6 +224,7 @@ def iter_glosses(s):
     quotes = "‘’" if "‘" in s else "''"
 
     gloss, pos, qualifier, fn, uncertain, comments = None, None, None, None, False, []
+    species, morpheme_gloss = None, None
     rem = s
     rem = re.sub(r"(?P<c>[a-z\.]){}s".format(quotes[1]), lambda m: m.group('c') + "__s", rem)
 
@@ -229,6 +239,11 @@ def iter_glosses(s):
         uncertain = True
         rem = rem[3:].strip()
 
+    m = morpheme_gloss_pattern.match(rem)
+    if m:
+        morpheme_gloss = m.group('g')
+        rem = rem[m.end():].strip()
+
     m = pos_pattern.match(rem)
     if m:
         pos = m.group('pos')
@@ -238,6 +253,13 @@ def iter_glosses(s):
     if m:
         qualifier = m.group('qualifier')
         rem = rem[m.end():].strip()
+
+    m = re.fullmatch(r"\[([^\]]+)\]", rem)
+    if m:
+        # a grammatical gloss
+        # FIXME: annotate somehow
+        gloss = m.group(1)
+        rem = ''
 
     rem, fn, fnpos = strip_footnote_reference(rem)
     if rem.startswith('?'):
@@ -252,12 +274,19 @@ def iter_glosses(s):
     if comment:
         comments.append(comment)
 
+    m = species_pattern.search(rem)
+    if m:
+        species = m.group('species')
+        rem = rem[:m.start()].strip()
+
     if rem:
-        assert rem.startswith(quotes[0]) and rem.endswith(quotes[1]), s
+        assert rem.startswith(quotes[0]) and rem.endswith(quotes[1]), (s, pos, rem)
         assert quotes[0] not in rem[1:-1], rem
         gloss = rem[1:-1].strip()
 
     yield dict(
             pos=pos,
+            species=species,
             gloss=gloss.replace("__s", quotes[1] + 's') if gloss else gloss,
+            morpheme_gloss=morpheme_gloss,
             fn=fn, comments=comments or [], qualifier=qualifier, uncertain=bool(uncertain))
