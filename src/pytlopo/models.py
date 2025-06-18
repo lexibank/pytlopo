@@ -496,6 +496,7 @@ class Chapter:
         bib['author'] = md['author']
         bib['pages'] = md['pages']
         header = "\n[{}](.smallcaps)\n\n".format(md['author'])
+        text = vol.replace_cross_refs(text, num)
         return cls(polish_text(header + vol.replace_refs(text, num)), bib)
 
 
@@ -539,20 +540,37 @@ class Volume:
             if m:
                 return srcid, m.groupdict().get('pages')
 
+    def replace_cross_refs(self, s, chapter):
+        def repl(m):
+            # FIXME: account for (§§10.8–9), where only "§10.8" is matched!
+            path, anchor = '', ''
+            if m.group('volume'):
+                if m.group('chapter'):
+                    path = '{}-{}'.format(m.group('volume'), m.group('chapter'))
+                else:
+                    return m.string[m.start():m.end()]
+            else:
+                if m.group('chapter'):
+                    path = '{}-{}'.format(self.num, m.group('chapter'))
+                else:
+                    path = '{}-{}'.format(self.num, chapter)
+            if m.group('section'):
+                anchor = 's-{}'.format(m.group('section'))
+                if m.group('subsection'):
+                    anchor += '-{}'.format(m.group('subsection'))
+                    if m.group('subsubsection'):
+                        anchor += '-{}'.format(m.group('subsubsection'))
+
+            res = '[{}](ContributionTable{}#cldf:{})'.format(m.string[m.start():m.end()], '?anchor=' + anchor if anchor else '', path)
+            return res
+        #
+        # FIXME: replace pattern with pages!
+        #
+        return refs.CROSS_REF_PATTERN.sub(repl, s)
+
     def replace_refs(self, s, chapter=None):
         for srcid, pattern in self.source_pattern_dict.items():
             s = pattern.sub(functools.partial(refs.repl_ref, srcid), s)
-        def repl(m):
-            fragment = 's-{}'.format(m.group('section'))
-            if m.group('subsection'):
-                fragment += '-{}'.format(m.group('subsection'))
-            if m.group('chapter') and m.group('chapter') != chapter:
-                # cross-chapter reference!
-                path = 'chapter{}.md'.format(m.group('chapter'))
-            else:
-                path = ''
-            return '[{}]({}#{})'.format(re.sub(r'\s*\.\s*', '.', m.string[m.start():m.end()]), path, fragment)
-
         #
         # FIXME: look for (Source#cldf:Lynch1978a), 1980 ...
         #
@@ -576,9 +594,7 @@ class Volume:
                     res += ', {}'.format(year)
             return res
 
-        s = m.sub(repl, s)
-
-        return refs.CROSS_REF_PATTERN.sub(repl, s)
+        return m.sub(repl, s)
 
     @functools.cached_property
     def reconstructions(self):

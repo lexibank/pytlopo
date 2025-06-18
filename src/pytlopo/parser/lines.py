@@ -14,6 +14,7 @@ CF_LINE_PREFIX = 'cf. also'
 h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
+h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
 
 figure_pattern = re.compile(r'Figure\s+[0-9]+[a-z]*(\.[0-9])?:')
 map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9])?):')
@@ -160,6 +161,11 @@ def iter_chapters(lines, voldir):
         m = h3_pattern.match(line)
         if m:
             chapter.append('\n<a id="s-{0}-{1}"></a>\n\n### {0}.{1}. {2}\n'.format(m.group('b'), m.group('c'), m.group('title')))
+            continue
+
+        m = h4_pattern.match(line)
+        if m:
+            chapter.append('\n<a id="s-{0}-{1}-{2}"></a>\n\n### {0}.{1}.{2} {3}\n'.format(m.group('b'), m.group('c'), m.group('d'), m.group('title')))
             continue
 
         if not line.strip():

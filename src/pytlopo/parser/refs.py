@@ -24,13 +24,16 @@ import re
 # vol.1 (ch.6, §5.6)
 # (vol.1, p.80)
 # (vol.1:155)
-
-CROSS_REF_PATTERN = re.compile(
-    r'(Ch(apter|\.)?\s+(?P<chapter>[0-9]+),\s*)?'
-    r'§\s*(?P<section>[0-9]+)'
+# volume 1 (p.93)
+CROSS_REF_PATTERN = re.compile(  # #s-<section>-<subsection>-<subsubsection>
+    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\()\s*)?'
+    r'((C|c)h(apter|\.)?\s*(?P<chapter>[0-9]+),\s*)?'
+    r'(§\s*(?P<section>[0-9]+))'
     r'(\s*\.\s*(?P<subsection>[0-9]+))?'
     r'(\s*\.\s*(?P<subsubsection>[0-9]+))?')
 
+CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>
+    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\())\s*pp?\.\s*(?P<page>[0-9]+)')
 
 #
 # match reconstruction refs: "POc *paus, *paus-i- 'weave, plait'"
