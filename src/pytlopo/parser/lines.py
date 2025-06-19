@@ -92,14 +92,17 @@ def make_paragraph(lines, voldir):
     m = map_pattern.match(lines[0])
     if m:  # Turn figures and maps into CLDF Markdown links referencing MediaTable items.
         mtype = 'map' if m.group('type').lower() == 'map' else 'fig'
-        fid = '{}-{}-{}.png'.format(mtype, voldir.name.replace('vol', ''), m.group('num'))
+        fid = '{}-{}-{}'.format(
+            mtype,
+            voldir.name.replace('vol', ''),
+            m.group('num').replace('.', '_'))
         p = voldir / 'maps' / '{}_{}.png'.format(mtype, m.group('num'))
         if p.exists():
             caption = ' '.join(l.strip() for l in lines)
             return """\
 <a id="{}"> </a>
 
-![{}](MediaTable#cldf:{})
+[{}](MediaTable#cldf:{})
 
 """.format(fid, caption, fid)
     return ' '.join(l.strip() for l in lines)
