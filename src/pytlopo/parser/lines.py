@@ -5,7 +5,6 @@ import re
 import functools
 
 from tabulate import tabulate
-from clldutils.html import HTML
 
 from pytlopo.config import proto_pattern, witness_pattern, fn_pattern
 
@@ -31,6 +30,7 @@ def formblock(lines):
     in_cf, cf, cfspec = False, [], None
 
     for line in lines:
+        assert is_forms_line(line), line
         if line.strip().startswith(CF_LINE_PREFIX):
             in_cf = True
             if cf:  # There's already a previous cf block.
@@ -45,14 +45,6 @@ def formblock(lines):
     if cf:
         cfs.append((cfspec, cf))
     return reg, cfs
-
-
-def etymon(block):
-    for line in block:
-        assert is_forms_line(line), line
-    forms = formblock(block)
-    assert forms
-    return forms
 
 
 def igt_group(lines):
@@ -98,18 +90,18 @@ def make_paragraph(lines, voldir):
             tablefmt='pipe')
     # __formset__, figure, map. __html__
     m = map_pattern.match(lines[0])
-    if m:
+    if m:  # Turn figures and maps into CLDF Markdown links referencing MediaTable items.
         mtype = 'map' if m.group('type').lower() == 'map' else 'fig'
+        fid = '{}-{}-{}.png'.format(mtype, voldir.name.replace('vol', ''), m.group('num'))
         p = voldir / 'maps' / '{}_{}.png'.format(mtype, m.group('num'))
         if p.exists():
-            print(p)
             caption = ' '.join(l.strip() for l in lines)
             return """\
-<a id="{}-{}"> </a>
+<a id="{}"> </a>
 
-![{}](../../raw/{}/maps/{})
+![{}](MediaTable#cldf:{})
 
-""".format(mtype, m.group('num'), caption, voldir.name, p.name)
+""".format(fid, caption, fid)
     return ' '.join(l.strip() for l in lines)
 
 
@@ -180,7 +172,7 @@ def iter_chapters(lines, voldir):
     yield in_chapter, make_chapter(chapter)
 
 
-def extract_blocks(lines, factory=etymon, start='<', end='>'):
+def extract_blocks(lines, factory=formblock, start='<', end='>'):
     pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
     pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
     pageno = -1

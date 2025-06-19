@@ -83,7 +83,7 @@ def repl_ref(srcid, m):
     return matched_string
 
 
-def refs2bib(lines):
+def refs2bib(lines):  # pragma: no cover
     from clldutils.misc import slug
     refs, author = [], None
     keys = set()
@@ -103,7 +103,7 @@ def refs2bib(lines):
         print(src.bibtex())
 
 
-def line2bibtex(i, line):
+def line2bibtex(i, line):  # pragma: no cover
     from pycldf.sources import Source
     bib = []
     m = re.search(r'(?P<year>([0-9]{4}(\-[0-9]+)?(a|b)?)|forthcoming|n\.d\.|in press|in preparation|In progress)', line)

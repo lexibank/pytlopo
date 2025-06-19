@@ -5,12 +5,34 @@ from pytlopo.parser.lines import extract_etyma
 
 
 @pytest.mark.parametrize(
+    'i,o',
+    [
+        ('(V) stuff', ('stuff', 'V')),
+    ]
+)
+def test_strip_pos(i, o):
+    assert strip_pos(i) == o
+
+
+@pytest.mark.parametrize(
+    'i,o',
+    [
+        ('[3] stuff', ('stuff', '3', 'start')),
+        ('[a] stuff', ('[a] stuff', None, None)),
+    ]
+)
+def test_strip_footnote_reference(i, o):
+    assert strip_footnote_reference(i) == o
+
+
+@pytest.mark.parametrize(
     'i,pos,o',
     [
         ('(abc)cde', 'start', ('abc', 'cde')),
         ('( abc ) cde', 'start', ('abc', 'cde')),
         ('( (a) bc ) cde', 'start', ('(a) bc', 'cde')),
         ('cde(abc)', 'end', ('abc', 'cde')),
+        ('cde((a)bc)', 'end', ('(a)bc', 'cde')),
     ]
 )
 def test_strip_comment(i, pos, o):
@@ -24,6 +46,8 @@ def test_strip_comment(i, pos, o):
         ('ab', 'a b'),
         ('äöü', 'ä ö ü'),
         ('aɛ̃a', 'a ɛ̃ a'),
+        ('tʰx', 'tʰ x'),
+        ('ˀab', 'ˀa b'),
     ]
 )
 def test_iter_graphemes(i, o):
@@ -40,8 +64,10 @@ list(iter_graphemes('buar̃a'))
     's,r',
     [
         ("[1] 'gloss'", lambda g: g['fn'] == '1'),
+        ("[A.B] 'gloss'", lambda g: g['morpheme_gloss'] == 'A.B'),
         ("'gloss' [7]", lambda g: g['fn'] == '7'),
         ("(V) 'gloss'", lambda g: g['pos'] == 'V'),
+        ("(?) 'gloss'", lambda g: g['uncertain'] is True),
     ]
 )
 def test_iter_glosses(s, r):
@@ -62,7 +88,10 @@ def test_iter_glosses_multiple():
         ("bu[b,g]uŋ 'ridgepole'", (["bu[b,g]uŋ"], "'ridgepole'")),
         ("bu<b>uŋ 'ridgepole'", (["bu<b>uŋ"], "'ridgepole'")),
         ("|bubuŋ  second| 'ridgepole'", (["bubuŋ second"], "'ridgepole'")),
-        #("pa, (ADV) *qa-pa ‘t’", (["pa", "qa-pa"], "‘t’")),  FIXME: requires parser reading POS spec again!
+        ("|pa pa|, *qa-pa ‘t’", (["pa pa", "qa-pa"], "‘t’")),
+        ("|pa pa| *qa-pa ‘t’", (["pa pa", "qa-pa"], "‘t’")),
+        ("p~*q ‘t’", (["p~q"], "‘t’")),
+        ("pa or *qa ‘t’", (["pa", "qa"], "‘t’")),
     ]
 )
 def test_parse_protoform(i, o):

@@ -21,17 +21,19 @@ import re
 import typing
 import unicodedata
 
+from clldutils.text import split_text_with_context
+
 from pytlopo.config import PROTO, POC_GRAPHEMES, POS, re_choice, fn_pattern
 
 __all__ = [
     'iter_graphemes', 'parse_protoform', 'strip_comment', 'strip_footnote_reference',
-    'iter_glosses',
+    'iter_glosses', 'strip_pos',
 ]
 
 pos_pattern = re.compile(r'\s*\((?P<pos>{})\s?\)\s*'.format(re_choice(POS)))
-species_pattern = re.compile(r'\s*\[(?P<species>[A-Z]([a-z]+|\.)\s+[a-z]+\.?)\]\s*$')
+species_pattern = re.compile(r'\s*\[(?P<species>[A-Z]([a-z]+|\.)\s+[a-z]+\.?)]\s*$')
 gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|2|3|4|5|ii|iii|iv)\s*\)\s*')  # ( 1 )
-morpheme_gloss_pattern = re.compile(r'\[(?P<g>[A-Za-z:\-= 1-3\/\.\(\)\?,]+)]')
+morpheme_gloss_pattern = re.compile(r'\[(?P<g>[A-Za-z:\-= 1-3/.()?,]+)]')
 
 
 def strip_pos(rem):
@@ -148,11 +150,6 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
             rem = ' '.join(words[1:])
         return (forms, rem.strip())
 
-    if '((' in f:
-        assert '))' in f
-        f = f.replace('))', ')')
-        f = f.replace('((', '(')
-
     in_bracket, in_sbracket, in_abracket = False, False, False
     phonemes = POC_GRAPHEMES
     phonemes.append('-')
@@ -220,13 +217,12 @@ def get_quotes(s):
 
 
 def iter_glosses(s):
-    from clldutils.text import split_text_with_context
     quotes = "‘’" if "‘" in s else "''"
 
     gloss, pos, qualifier, fn, uncertain, comments = None, None, None, None, False, []
     species, morpheme_gloss = None, None
     rem = s
-    rem = re.sub(r"(?P<c>[a-z\.]){}s".format(quotes[1]), lambda m: m.group('c') + "__s", rem)
+    rem = re.sub(r"(?P<c>[a-z.]){}s".format(quotes[1]), lambda m: m.group('c') + "__s", rem)
 
     chunks = split_text_with_context(rem, ";", brackets={"(": ")", "'": "'", "‘": "’"})
     if len(chunks) > 1:
@@ -242,6 +238,11 @@ def iter_glosses(s):
     m = morpheme_gloss_pattern.match(rem)
     if m:
         morpheme_gloss = m.group('g')
+        try:
+            fn = str(int(morpheme_gloss))
+            morpheme_gloss = None
+        except ValueError:
+            pass
         rem = rem[m.end():].strip()
 
     m = pos_pattern.match(rem)
@@ -254,14 +255,14 @@ def iter_glosses(s):
         qualifier = m.group('qualifier')
         rem = rem[m.end():].strip()
 
-    m = re.fullmatch(r"\[([^\]]+)\]", rem)
+    m = re.fullmatch(r"\[([^]]+)]", rem)
     if m:
-        # a grammatical gloss
-        # FIXME: annotate somehow
-        gloss = m.group(1)
+        morpheme_gloss = m.group(1)
         rem = ''
 
-    rem, fn, fnpos = strip_footnote_reference(rem)
+    if not fn:
+        rem, fn, fnpos = strip_footnote_reference(rem)
+
     if rem.startswith('?'):
         uncertain = True
         rem = rem[1:].strip()

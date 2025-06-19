@@ -9,6 +9,7 @@ import dataclasses
 
 from pycldf.sources import Sources, Source
 from clldutils.misc import slug
+from clldutils import jsonlib
 
 from .config import TRANSCRIPTION, proto_pattern, witness_pattern
 from pytlopo.parser.forms import (
@@ -505,7 +506,7 @@ class Volume:
         self.dir = d
         self.num = d.name[-1]
         self.langs = langs
-        self.metadata = self.dir.read_json('md.json')
+        self.metadata = jsonlib.load(self.dir / 'md.json')
         self._lines = None
         bib.id = 'tlopo{}'.format(self.num)
         bib['title'] += ' {}: {}'.format(self.num, self.metadata['title'])
