@@ -23,7 +23,7 @@ import unicodedata
 
 from clldutils.text import split_text_with_context
 
-from pytlopo.config import PROTO, POC_GRAPHEMES, POS, re_choice, fn_pattern
+from pytlopo.config import PROTO, POC_GRAPHEMES, POS, re_choice, fn_pattern, kinship_pattern
 
 __all__ = [
     'iter_graphemes', 'parse_protoform', 'strip_comment', 'strip_footnote_reference',
@@ -32,7 +32,7 @@ __all__ = [
 
 pos_pattern = re.compile(r'\s*\((?P<pos>{})\s?\)\s*'.format(re_choice(POS)))
 species_pattern = re.compile(r'\s*\[(?P<species>[A-Z]([a-z]+|\.)\s+[a-z]+\.?)]\s*$')
-gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>i|1|present meaning|2|3|4|5|ii|iii|iv)\s*\)\s*')  # ( 1 )
+gloss_number_pattern = re.compile(r'\s*\(\s*(?P<qualifier>(i|1|present meaning|2|3|4|5|ii|iii|iv)(\.[0-9])?)\s*\)\s*')  # ( 1 )
 morpheme_gloss_pattern = re.compile(r'\[(?P<g>[A-Za-z:\-= 1-3/.()?,]+)]')
 
 
@@ -133,7 +133,7 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
     <x>       x is an infix
     """
     if f.startswith('|'):  # multi-word protoform
-        assert '|' in f[1:]
+        assert '|' in f[1:], f
         f, _, rem = f[1:].partition('|')
         forms = [
             ' '.join(parse_protoform(word, pl, allow_rem=False)[0][0]
@@ -150,8 +150,11 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
             rem = ' '.join(words[1:])
         return (forms, rem.strip())
 
+    #if f.startswith('karag'):
+    #    print(f, pl, allow_rem)
+
     in_bracket, in_sbracket, in_abracket = False, False, False
-    phonemes = POC_GRAPHEMES
+    phonemes = [g for g in POC_GRAPHEMES]
     phonemes.append('-')
     phonemes.extend(PROTO[pl])
     form, length = '', 0
@@ -244,6 +247,12 @@ def iter_glosses(s):
         except ValueError:
             pass
         rem = rem[m.end():].strip()
+    else:
+        m = kinship_pattern.search(rem)
+        if m:
+            morpheme_gloss = ' '.join(
+                [s.strip() for s in m.string[m.start() + 1:m.end()].split(',') if s.strip()])
+            rem = rem[:m.start() + 1] + rem[m.end():]
 
     m = pos_pattern.match(rem)
     if m:

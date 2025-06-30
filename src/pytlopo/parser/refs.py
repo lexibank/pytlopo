@@ -88,9 +88,9 @@ def refs2bib(lines):  # pragma: no cover
     refs, author = [], None
     keys = set()
     for i, line in enumerate(lines, start=1):
-        if re.match(r'—\s*,', line):
+        if re.match(r'——\s*,', line):
             assert author
-            author, dis, src = line2bibtex(i, re.sub(r'^—\s*,\s*', author + ' ', line))
+            author, dis, src = line2bibtex(i, re.sub(r'^——\s*,\s*', author + ' ', line))
         else:
             author, dis, src = line2bibtex(i, line)
         key = src.refkey(year_brackets=None) + (dis or '')
@@ -106,7 +106,7 @@ def refs2bib(lines):  # pragma: no cover
 def line2bibtex(i, line):  # pragma: no cover
     from pycldf.sources import Source
     bib = []
-    m = re.search(r'(?P<year>([0-9]{4}(\-[0-9]+)?(a|b)?)|forthcoming|n\.d\.|in press|in preparation|In progress)', line)
+    m = re.search(r'(?P<year>([0-9]{4}(\-[0-9]+)?(a|b)?)|forthcoming|n\.d\.|in press|in preparation|In progress|ongoing)', line)
     assert m, line
     raw_author = line[:m.start()].strip()
     author = raw_author
@@ -132,7 +132,7 @@ def line2bibtex(i, line):  # pragma: no cover
     if inm:
         edm = re.search(r',\s+eds?\.?(\s*,)?\s+', rem[inm.end():])
         if edm:
-            assert ctype == 'author', line
+            assert ctype == 'author', (rem, line)
             kw['editor'] = rem[inm.end():inm.end() + edm.start()].replace('1', 'I')
             genre = 'incollection'
             kw['booktitle'] = rem[inm.end() + edm.end():].strip().rstrip('.').strip()

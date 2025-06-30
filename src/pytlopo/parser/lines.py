@@ -20,9 +20,10 @@ map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9])?
 
 
 def is_forms_line(line):
-    return (proto_pattern.match(line) or
+    return (re.match('-[A-Z]', line) or
+            (proto_pattern.match(line) or
             witness_pattern.match(line) or
-            line.strip().startswith(CF_LINE_PREFIX))
+            line.strip().startswith(CF_LINE_PREFIX)))
 
 
 def formblock(lines):
@@ -62,8 +63,10 @@ def make_paragraph(lines, voldir):
     Figure ...
     Map ...
     """
-    if lines[0].startswith('|') or lines[0] == '__blockquote__':
+    if lines[0].startswith('|'):
         return '> {}'.format(' '.join(line.lstrip('|').strip() for line in lines))
+    if lines[0] == '__blockquote__':
+        return '> {}'.format(' '.join(line.strip() for line in lines[1:]))
     if lines[0] == '__formgroup__':
         for line in lines[1:]:
             assert is_forms_line(line) or '**' in line, line
@@ -122,6 +125,8 @@ def make_chapter(paras):
 
 
 def iter_chapters(lines, voldir):
+    from pytlopo.parser.forms import strip_footnote_reference
+
     pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
     pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
     # replace page numbers with anchors p-...
@@ -129,15 +134,15 @@ def iter_chapters(lines, voldir):
     # Reformat footnotes [^1] and [^1]: ...
     # Turn footnotes into endnotes.
     # Split into markdown docs per chapter. -> remove chapter number from section headings
-    chapter, para = [], []
+    chapter, toc, para = [], [], []
     in_chapter = None
     pageno = -1
     for line in lines:
         m = h1_pattern.match(line)
         if m:
             if in_chapter:
-                yield in_chapter, make_chapter(chapter)
-            chapter, in_chapter = [], m.group('a')
+                yield in_chapter, make_chapter(chapter), toc
+            chapter, toc, in_chapter = [], [], m.group('a')
             continue
 
         if not in_chapter:
@@ -150,17 +155,29 @@ def iter_chapters(lines, voldir):
 
         m = h2_pattern.match(line)
         if m:
-            chapter.append('\n<a id="s-{0}"></a>\n\n## {0}. {1}\n'.format(m.group('b'), m.group('title')))
+            link = 's-{b}'.format(**m.groupdict())
+            number = '{b}.'.format(**m.groupdict())
+            title = '{title}'.format(**m.groupdict())
+            chapter.append('\n<a id="{}"></a>\n\n## {} {}\n'.format(link, number, title))
+            toc.append((1, link, strip_footnote_reference(title)[0]))
             continue
 
         m = h3_pattern.match(line)
         if m:
-            chapter.append('\n<a id="s-{0}-{1}"></a>\n\n### {0}.{1}. {2}\n'.format(m.group('b'), m.group('c'), m.group('title')))
+            link = 's-{b}-{c}'.format(**m.groupdict())
+            number = '{b}.{c}.'.format(**m.groupdict())
+            title = '{title}'.format(**m.groupdict())
+            chapter.append('\n<a id="{}"></a>\n\n### {} {}\n'.format(link, number, title))
+            toc.append((2, link, strip_footnote_reference(title)[0]))
             continue
 
         m = h4_pattern.match(line)
         if m:
-            chapter.append('\n<a id="s-{0}-{1}-{2}"></a>\n\n### {0}.{1}.{2} {3}\n'.format(m.group('b'), m.group('c'), m.group('d'), m.group('title')))
+            link = 's-{b}-{c}-{d}'.format(**m.groupdict())
+            number = '{b}.{c}.{d}.'.format(**m.groupdict())
+            title = '{title}'.format(**m.groupdict())
+            chapter.append('\n<a id="{}"></a>\n\n#### {} {}\n'.format(link, number, title))
+            toc.append((3, link, strip_footnote_reference(title)[0]))
             continue
 
         if not line.strip():
@@ -172,7 +189,7 @@ def iter_chapters(lines, voldir):
 
     if para:
         chapter.append(make_paragraph(para, voldir))
-    yield in_chapter, make_chapter(chapter)
+    yield in_chapter, make_chapter(chapter), toc
 
 
 def extract_blocks(lines, factory=formblock, start='<', end='>'):
@@ -227,6 +244,7 @@ def extract_blocks(lines, factory=formblock, start='<', end='>'):
             else:
                 m = h2_pattern.match(line)
                 if m:
+                    assert h1, line
                     assert m.group('a') == h1[0], (line, h1)
                     h2 = (m.group('b'), m.group('title'))
                     h3 = None

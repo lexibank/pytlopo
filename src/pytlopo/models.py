@@ -190,6 +190,7 @@ class Form:
     lang: str
     forms: typing.List[str]
     glosses: typing.List[Gloss] = None
+    subgroup: str = None
 
 
 @dataclasses.dataclass
@@ -216,7 +217,7 @@ class Protoform(Form):
         )
 
     @classmethod
-    def from_line(cls, vol, line):
+    def from_line(cls, vol, line, subgroup=None):
         # FIXME: could store the quoting type with vol!?
         quotes = get_quotes(line)
         kw = {'glosses': []}
@@ -276,7 +277,7 @@ class Protoform(Form):
                 kw['glosses'].append(Gloss.from_dict(vol, g))
 
         kw['forms'] = forms
-        return cls(**kw)
+        return cls(subgroup=subgroup, **kw)
 
 
 @dataclasses.dataclass
@@ -302,7 +303,7 @@ class Reflex(Form):
         )
 
     @classmethod
-    def from_line(cls, vol, line):
+    def from_line(cls, vol, line, subgroup=None):
         lang, word, gloss, pos = None, None, None, None
         group, _, rem = line.partition(':')
         rem_words = rem.strip().split()
@@ -356,6 +357,7 @@ class Reflex(Form):
             lfn=lfn,
             ffn=ffn,
             morpheme_gloss=glosses[0].morpheme_gloss if glosses else None,
+            subgroup=subgroup,
             #pos=pos,
             #comment=gloss['comment']
         )
@@ -433,16 +435,22 @@ class Reconstruction(DataReference):
 
         reflexes = []
 
-        def get_obj(line):
-            if proto_pattern.match(line):
-                return Protoform.from_line(vol, line)
-            if witness_pattern.match(line):
-                return Reflex.from_line(vol, line)
-            else:
+        def iter_objs(lines):
+            subgroup = None
+            for line in lines:
+                if proto_pattern.match(line):
+                    yield Protoform.from_line(vol, line, subgroup=subgroup)
+                    continue
+                if witness_pattern.match(line):
+                    yield Reflex.from_line(vol, line, subgroup=subgroup)
+                    continue
+                if line.startswith('-'):
+                    subgroup = line[1:].strip()
+                    continue
                 raise ValueError(line)
 
-        reflexes = [get_obj(line) for line in forms]
-        assert isinstance(reflexes[0], Protoform)
+        reflexes = list(iter_objs(forms))
+        assert any(isinstance(ref, Protoform) for ref in reflexes)
 
         return cls(
             volume=vol.num,
@@ -451,7 +459,7 @@ class Reconstruction(DataReference):
             subsection=h3,
             page=pageno,
             reflexes=reflexes,
-            cfs=[(cfspec, [get_obj(line) for line in cf])  for cfspec, cf in cfs or []]
+            cfs=[(cfspec, list(iter_objs(cf)))  for cfspec, cf in cfs or []]
         )
 
     def __str__(self):
@@ -481,10 +489,11 @@ def polish_text(text):
 @dataclasses.dataclass
 class Chapter:
     text: str
+    toc: list
     bib: Source
 
     @classmethod
-    def from_text(cls, vol, num, text):
+    def from_text(cls, vol, num, text, toc):
         for md in vol.metadata['chapters']:
             if md['number'] == num:
                 break
@@ -498,7 +507,7 @@ class Chapter:
         bib['pages'] = md['pages']
         header = "\n[{}](.smallcaps)\n\n".format(md['author'])
         text = vol.replace_cross_refs(text, num)
-        return cls(polish_text(header + vol.replace_refs(text, num)), bib)
+        return cls(polish_text(header + vol.replace_refs(text, num)), toc, bib)
 
 
 class Volume:
@@ -520,7 +529,7 @@ class Volume:
     def chapters(self):
         if not self._lines:
             assert self.reconstructions
-        return {num: Chapter.from_text(self, num, text) for num, text in iter_chapters(self._lines, self.dir)}
+        return {num: Chapter.from_text(self, num, text, toc) for num, text, toc in iter_chapters(self._lines, self.dir)}
 
     @functools.cached_property
     def source_in_brackets_pattern_dict(self):
@@ -572,13 +581,12 @@ class Volume:
     def replace_refs(self, s, chapter=None):
         for srcid, pattern in self.source_pattern_dict.items():
             s = pattern.sub(functools.partial(refs.repl_ref, srcid), s)
-        #
-        # FIXME: look for (Source#cldf:Lynch1978a), 1980 ...
-        #
-        m = re.compile(r"\(Source#cldf:([^\)]+)\)(,\s*[0-9]+[a-z]?)+")
+
+        sep = r',\s*|\s+and\s+'  # We look for comma or " and " separated years.
+        m = re.compile(r"\(Source#cldf:([^\)]+)\)(({})[0-9]+(\-[0-9]+)?[a-z]?)+".format(sep))
 
         def repl(m):
-            link, *years = [s.strip() for s in m.string[m.start():m.end()].split(',')]
+            link, *years = [s.strip() for s in re.split(sep, m.string[m.start():m.end()])]
             author, year, inyear = '', '', False
             for c in link.partition(':')[2]:
                 if not inyear and c.isdigit():
@@ -589,8 +597,9 @@ class Volume:
                     author += c
             res = link
             for year in years:
-                if author + year in self.source_pattern_dict:
-                    res += ', [{}](Source#cldf:{})'.format(year, author + year)
+                cyear = year.replace('-', '')
+                if author + cyear in self.source_pattern_dict:
+                    res += ', [{}](Source#cldf:{})'.format(year, author + cyear)
                 else:
                     res += ', {}'.format(year)
             return res
