@@ -10,14 +10,33 @@ import dataclasses
 from pycldf.sources import Sources, Source
 from clldutils.misc import slug
 from clldutils import jsonlib
+from pyigt import IGT, LGRConformance
 
-from .config import TRANSCRIPTION, proto_pattern, witness_pattern
+from .config import TRANSCRIPTION, proto_pattern, witness_pattern, PROTO
 from pytlopo.parser.forms import (
     parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes,
     strip_footnote_reference, strip_comment, strip_pos, pos_pattern
 )
 from pytlopo.parser.lines import extract_etyma, iter_chapters, extract_igts, extract_formgroups
 from pytlopo.parser import refs
+
+
+@dataclasses.dataclass
+class Reference:
+    id: str
+    label: str
+    pages: str = None
+
+    def __str__(self):
+        return '[{}]({})'.format(self.label, self.id)
+
+    @property
+    def cldf_id(self):
+        res = self.id
+        if self.pages:
+            assert '[' not in self.pages
+            res += '[{}]'.format(self.pages)
+        return res
 
 
 @dataclasses.dataclass
@@ -91,31 +110,175 @@ class FormGroup(DataReference):
 
 
 @dataclasses.dataclass
-class ExampleGroup(DataReference):
+class Example:
+    id: str = None
+    analyzed: str = None
+    gloss: str = None
+    add_gloss: str = None
+    translation: str = None
+    comment: str = None
+    reference: Reference = None
+    language: str = None
     label: str = None
-    examples: list = None
-    __table__ = 'ExmpleTable'
+
+    @functools.cached_property
+    def igt(self):
+        return IGT(phrase=self.analyzed, gloss=self.gloss)
+
+    def __str__(self):
+        return """{}{}{}
+{}
+""".format(self.label + ' ' if self.label else '',
+           self.language + ':',
+           ' ({})'.format(self.reference.label) if self.reference else '',
+           '\n'.join(str(self.igt).split('\n')[1:]))
 
     @classmethod
-    def from_data(cls, vol, h1, h2, h3, page, lines):
-        return cls(lines[0], lines[1])
+    def from_lines(cls, vol, lines, lang, ldata, ref):
+        add_gloss = None
+        if len(lines) == 3:
+            analyzed, gloss, translation = lines
+        elif len(lines) == 4:
+            analyzed, gloss, add_gloss, translation = lines
+        else:
+            raise ValueError(lines)
+        s, e = get_quotes(translation)
+
+        translation = re.sub(
+            "(?P<pre>[A-Za-z]){}(?P<post>[a-z])".format(e),
+            lambda m: "{}__e__{}".format(m.group('pre'), m.group('post')),
+            translation)
+
+        assert translation.startswith(s), (s, translation, lines)
+        translation, _, comment = translation[1:].partition(e)
+        translation = translation.replace('__e__', e)
+        comment = comment.strip()
+        real_comment = None
+        if comment:
+            assert comment.startswith('(') and comment.endswith(')'), (comment, lines)
+            for cmt in re.split(r'\)\s*\(', comment):
+                cmt = cmt.lstrip('(').rstrip(')')
+                r = vol.match_ref(cmt)
+                if r:
+                    ref = Reference(r[0], cmt, r[1])
+                else:
+                    assert not real_comment, (real_comment, cmt, lines[-1])
+                    real_comment = cmt
+
+        label = None
+        m = re.match(r'(?P<label>[a-g](\.|\)))\s+', analyzed)
+        if m:
+            label = m.group('label')
+            analyzed = analyzed[m.end():]
+
+        igt = IGT(phrase=analyzed, gloss=gloss)
+        if igt.conformance != LGRConformance.MORPHEME_ALIGNED:
+            cmt, analyzed = strip_comment(analyzed)
+            if cmt:
+                assert not real_comment, '\n'.join(lines)
+                real_comment = cmt
+            igt = IGT(phrase=analyzed, gloss=gloss)
+            assert igt.conformance == LGRConformance.MORPHEME_ALIGNED
+
+        if add_gloss:
+            assert len(add_gloss.split()) == len(igt.glossed_words), (add_gloss, len(igt.glossed_words))
+
+        return cls(
+            analyzed=analyzed.split(),
+            gloss=gloss.split(),
+            add_gloss=add_gloss.split() if add_gloss else None,
+            translation=translation,
+            comment=comment,
+            reference=ref,
+            language=lang,
+            label=label,
+        )
 
 
 @dataclasses.dataclass
-class Reference:
-    id: str
-    label: str
-    pages: str = None
+class ExampleGroup(DataReference):
+    """
+    (1) Boumaa (Fij): (Dixon 1988:204, 231)
+    a. Au   rabe.
+       s:1s kick
+       'I'm kicking.'
+    b. Au    rabe-t-a     a   polo.
+       s:1s  kick-TR-O:3s ART ball
+       'I'm kicking the ball.'
 
-    def __str__(self):
-        return '[{}]({})'.format(self.label, self.id)
+    Longgu (SES)
+      e     la vu komu (local noun)
+      S:3SG go R  village
+      ‘s/he went towards her/his (home) village’
+       e     la vu   ta-na      iola  ŋaia (common noun)
+       S:3SG go R    PREP-P:3SG canoe D:3SG
+       ‘s/he went to her/his (canoe)’
 
-    @property
-    def cldf_id(self):
-        res = self.id
-        if self.pages:
-            assert '[' not in self.pages
-            res += '[{}]'.format(self.pages)
+Seimat (Adm)
+Tok      mom          hahitak-e         tehu     iŋ.
+CLF      chicken      under-CSTR        CLF      house
+‘The chicken [is] under the house.’ (Wozna & Wilson 2005:66)
+
+Additional gloss line:
+
+Hoava (MM)
+Hagala       vura        mae         sa          manue.
+run          go. out     come        ART:S       possum
+MANNER       PATH        DEIXIS
+‘The possum came running out.’ (Davis 2003:155)
+    """
+    index: int = None
+    number: str = None
+    #label: str = None
+    examples: list = None
+    #reference: Reference = None
+    __table__ = 'examplegroups.csv'
+
+    def subkey(self):
+        return [self.index]
+
+    @classmethod
+    def from_data(cls, index, vol, h1, h2, h3, page, lines):
+        num, ref = None, None
+        header, examples = lines[0], lines[1:]
+        header = header.strip()
+        # Extract optional example number:
+        m = re.match(r'\((?P<num>[0-9]+|[a-z])\)', header)
+        if m:
+            num = m.group('num')
+            header = header[m.end():].strip()
+
+        lang, ldata, header = vol.match_language(header)
+        if not ldata:
+            # A proto language!
+            assert (not header.strip()) or header.strip().startswith(':')
+        if ldata and ldata['Group']:
+            m = re.match(r'\s*\((?P<group>[A-Za-z]+)\)', header)
+            assert m, (vol.num, lang, ldata, lines[0])
+            assert m.group('group') == ldata['Group']
+            header = header[m.end():].strip()
+
+        header = header.lstrip(': ')
+        if header:
+            srcid, pages = vol.match_ref(header)  # To be associated with individual examples below.
+            ref = Reference(srcid, header.lstrip('(').rstrip(')'), pages)
+
+        assert len(examples) % 3 == 0 or len(examples) == 4, (vol.num, lines)
+        examples = [line.strip() for line in examples]
+
+        res = cls(
+            volume=str(vol.num),
+            chapter=h1,
+            section=h2,
+            subsection=h3,
+            page=page,
+            index=index,
+            number=num,
+            examples=
+                [Example.from_lines(vol, examples, lang, ldata, ref)] if len(examples) == 4 else
+                [Example.from_lines(vol, examples[i:i+3], lang, ldata, ref) for i in range(0, len(examples), 3)])
+        for i, e in enumerate(res.examples, start=1):
+            e.id = '{}-{}'.format(res.id, i)
         return res
 
 
@@ -306,16 +469,15 @@ class Reflex(Form):
     def from_line(cls, vol, line, subgroup=None):
         lang, word, gloss, pos = None, None, None, None
         group, _, rem = line.partition(':')
-        rem_words = rem.strip().split()
-        for lg in sorted(vol.langs, key=lambda l: -len(l)):
-            lg = lg.split()
-            if rem_words[:len(lg)] == lg:
-                lang = ' '.join(lg)
-                for word in lg:
-                    rem = rem.lstrip(' ')
-                    assert rem.startswith(word), rem
-                    rem = rem[len(word):].strip()
-                break
+        group = group.strip()
+        lang = vol.match_language(rem.strip(), group=group)
+        assert lang
+        lang = lang[0]
+        for word in lang.split():
+            rem = rem.lstrip(' ')
+            assert rem.startswith(word), rem
+            rem = rem[len(word):].strip()
+
         # get the next word:
         rem, lfn, _ = strip_footnote_reference(rem, start_only=True)
         if rem.startswith('|'):  # multi word marker
@@ -351,7 +513,7 @@ class Reflex(Form):
         assert len([g for g in glosses if g.morpheme_gloss]) < 2
         return cls(
             group=group.strip(),
-            lang=' '.join(lg),
+            lang=lang,
             forms=[word],
             glosses=glosses,
             lfn=lfn,
@@ -525,6 +687,15 @@ class Volume:
     def __str__(self):
         return self.bib['title']
 
+    def match_language(self, s, group=None):
+        for lg in sorted(self.langs, key=lambda l: -len(l)):
+            if s.startswith(lg):
+                assert group is None or (self.langs[lg]['Group'] == group), (group, lg, s)
+                return lg, self.langs[lg], s[len(lg):]
+        for k in PROTO:
+            if s.startswith(k):
+                return k, None, s[len(k):]
+
     @functools.cached_property
     def chapters(self):
         if not self._lines:
@@ -545,10 +716,17 @@ class Volume:
     def match_ref(self, s):
         if not s.startswith('('):
             s = '({})'.format(s)
+        pages = None
+        if s.endswith(')'):
+            pages_pattern = re.compile(r'\:\s*(?P<pages>[0-9]+([,;-]\s*[0-9]+)*)\)')
+            m = pages_pattern.search(s)
+            if m:
+                pages = m.group('pages')
+                s = s[:m.start()] + ')'
         for srcid, pattern in self.source_in_brackets_pattern_dict.items():
             m = pattern.fullmatch(s)
             if m:
-                return srcid, m.groupdict().get('pages')
+                return srcid, pages or m.groupdict().get('pages')
 
     def replace_cross_refs(self, s, chapter):
         def repl(m):
@@ -655,18 +833,21 @@ class Volume:
             self._lines = e.value
 
     def _iter_igts(self):
+        n = 0
         assert self.reconstructions
         igts = extract_igts(self._lines)
         try:
             h1, h2, h3, pageno, block = next(igts)
+            n += 1
         except StopIteration:
             return
-        eg = ExampleGroup.from_data(self, h1, h2, h3, pageno, block)
+        eg = ExampleGroup.from_data(n, self, h1, h2, h3, pageno, block)
         yield eg
         try:
             while True:
                 h1, h2, h3, pageno, block = igts.send(eg.cldf_markdown_link())
-                eg = ExampleGroup.from_data(self, h1, h2, h3, pageno, block)
+                n += 1
+                eg = ExampleGroup.from_data(n, self, h1, h2, h3, pageno, block)
                 yield eg
         except StopIteration as e:
             self._lines = e.value

@@ -63,6 +63,9 @@ def make_paragraph(lines, voldir):
     Figure ...
     Map ...
     """
+    m = re.match(r'\:\s+\_*Table\s+(?P<num>[0-9]+)\_*', lines[0])
+    if m:
+        return '<a id="table-{}"> </a>\n\n{}'.format(m.group('num'), '\n'.join(lines))
     if lines[0].startswith('|'):
         return '> {}'.format(' '.join(line.lstrip('|').strip() for line in lines))
     if lines[0] == '__blockquote__':

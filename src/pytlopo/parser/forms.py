@@ -220,7 +220,7 @@ def get_quotes(s):
 
 
 def iter_glosses(s):
-    quotes = "‘’" if "‘" in s else "''"
+    quotes = get_quotes(s)
 
     gloss, pos, qualifier, fn, uncertain, comments = None, None, None, None, False, []
     species, morpheme_gloss = None, None
