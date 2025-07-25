@@ -7,6 +7,7 @@ import functools
 import collections
 import dataclasses
 
+from docutils.languages.af import labels
 from pycldf.sources import Sources, Source
 from clldutils.misc import slug
 from clldutils import jsonlib
@@ -134,15 +135,22 @@ class Example:
            '\n'.join(str(self.igt).split('\n')[1:]))
 
     @classmethod
-    def from_lines(cls, vol, lines, lang, ldata, ref):
-        add_gloss = None
+    def from_lines(cls, vol, lines, lang=None, ldata=None, ref=None):
+        add_gloss, header = None, None
         if len(lines) == 3:
             analyzed, gloss, translation = lines
         elif len(lines) == 4:
-            analyzed, gloss, add_gloss, translation = lines
+            if lang is None:
+                # FIXME: first line is language header
+                header, analyzed, gloss, translation = lines
+            else:
+                # Additional gloss line.
+                analyzed, gloss, add_gloss, translation = lines
         else:
             raise ValueError(lines)
         s, e = get_quotes(translation)
+
+        assert lang or header, lines
 
         translation = re.sub(
             "(?P<pre>[A-Za-z]){}(?P<post>[a-z])".format(e),
@@ -166,10 +174,21 @@ class Example:
                     real_comment = cmt
 
         label = None
-        m = re.match(r'(?P<label>[a-g](\.|\)))\s+', analyzed)
+        m = re.match(r'(?P<label>[a-g](\.|\)))\s+', header or analyzed)
         if m:
             label = m.group('label')
-            analyzed = analyzed[m.end():]
+            if header:
+                header = header[m.end():]
+            else:
+                analyzed = analyzed[m.end():]
+
+        if lang is None:
+            try:
+                lang, ldata, header = vol.match_language(header)
+            except:
+                raise ValueError(header)
+            m = re.fullmatch(r'\s*\((?P<group>[A-Za-z]+)(,[^\)]+)?\)\s*', header)
+            assert m and m.group('group') == ldata['Group'], lines
 
         igt = IGT(phrase=analyzed, gloss=gloss)
         if igt.conformance != LGRConformance.MORPHEME_ALIGNED:
@@ -178,7 +197,7 @@ class Example:
                 assert not real_comment, '\n'.join(lines)
                 real_comment = cmt
             igt = IGT(phrase=analyzed, gloss=gloss)
-            assert igt.conformance == LGRConformance.MORPHEME_ALIGNED
+            assert igt.conformance == LGRConformance.MORPHEME_ALIGNED, lines
 
         if add_gloss:
             assert len(add_gloss.split()) == len(igt.glossed_words), (add_gloss, len(igt.glossed_words))
@@ -188,7 +207,7 @@ class Example:
             gloss=gloss.split(),
             add_gloss=add_gloss.split() if add_gloss else None,
             translation=translation,
-            comment=comment,
+            comment=real_comment,
             reference=ref,
             language=lang,
             label=label,
@@ -226,9 +245,22 @@ Hagala       vura        mae         sa          manue.
 run          go. out     come        ART:S       possum
 MANNER       PATH        DEIXIS
 ‘The possum came running out.’ (Davis 2003:155)
+
+12)   a. Mussau (Adm)
+         ko-tolu olimo namū
+         ATTRIB-3 canoe big
+         ‘three big canoes’ (Brownie & Brownie 2007:51)
+      b. Ughele (MM, New Georgia group)
+         ka      made vineki meke ka         rua koreo
+         ATTRIB 4       girls and ATTRIB 2 men
+         ‘four girls and two men’ (Frostad 2012:59)
+      c. Kwamera (SV, Tanna)
+         nimʷa kəru
+         house 2          ‘two houses’ (Lindstrom & Lynch 1994:16)
     """
     index: int = None
     number: str = None
+    context: str = None
     #label: str = None
     examples: list = None
     #reference: Reference = None
@@ -239,32 +271,46 @@ MANNER       PATH        DEIXIS
 
     @classmethod
     def from_data(cls, index, vol, h1, h2, h3, page, lines):
-        num, ref = None, None
+        num, ref, context = None, None, None
         header, examples = lines[0], lines[1:]
         header = header.strip()
         # Extract optional example number:
-        m = re.match(r'\((?P<num>[0-9]+|[a-z])\)', header)
+        m = re.match(r'\(?(?P<num>[0-9]+|[a-z])\)', header)
         if m:
             num = m.group('num')
             header = header[m.end():].strip()
 
-        lang, ldata, header = vol.match_language(header)
-        if not ldata:
-            # A proto language!
-            assert (not header.strip()) or header.strip().startswith(':')
-        if ldata and ldata['Group']:
-            m = re.match(r'\s*\((?P<group>[A-Za-z]+)\)', header)
-            assert m, (vol.num, lang, ldata, lines[0])
-            assert m.group('group') == ldata['Group']
-            header = header[m.end():].strip()
+        # First look for  "12)   a. Mussau (Adm)"
+        if re.match(r'[a-g]\.\s+', header):
+            lines[0] = header
+            assert len(lines) % 4 == 0, lines
+            examples = [Example.from_lines(vol, [l.strip() for l in lines[i:i+4]]) for i in range(0, len(lines), 4)]
+        else:
+            try:
+                lang, ldata, header = vol.match_language(header)
+            except:
+                raise ValueError(header)
+            if not ldata:
+                # A proto language!
+                assert (not header.strip()) or header.strip().startswith(':')
+            if ldata and ldata['Group']:
+                m = re.match(r'\s*\((?P<group>[A-Za-z]+)\)', header)
+                assert m, (vol.num, lang, ldata, lines[0])
+                assert m.group('group') == ldata['Group']
+                header = header[m.end():].strip()
 
-        header = header.lstrip(': ')
-        if header:
-            srcid, pages = vol.match_ref(header)  # To be associated with individual examples below.
-            ref = Reference(srcid, header.lstrip('(').rstrip(')'), pages)
+            header = header.lstrip(': ')
+            if header:
+                try:
+                    srcid, pages = vol.match_ref(header)  # To be associated with individual examples below.
+                    ref = Reference(srcid, header.lstrip('(').rstrip(')'), pages)
+                except TypeError:
+                    context = header
 
-        assert len(examples) % 3 == 0 or len(examples) == 4, (vol.num, lines)
-        examples = [line.strip() for line in examples]
+            assert len(examples) % 3 == 0 or len(examples) == 4, (vol.num, lines)
+            examples = [line.strip() for line in examples]
+            examples = [Example.from_lines(vol, examples, lang, ldata, ref)] if len(examples) == 4 \
+                else [Example.from_lines(vol, examples[i:i+3], lang, ldata, ref) for i in range(0, len(examples), 3)]
 
         res = cls(
             volume=str(vol.num),
@@ -274,9 +320,9 @@ MANNER       PATH        DEIXIS
             page=page,
             index=index,
             number=num,
-            examples=
-                [Example.from_lines(vol, examples, lang, ldata, ref)] if len(examples) == 4 else
-                [Example.from_lines(vol, examples[i:i+3], lang, ldata, ref) for i in range(0, len(examples), 3)])
+            context=context,
+            examples=examples,
+        )
         for i, e in enumerate(res.examples, start=1):
             e.id = '{}-{}'.format(res.id, i)
         return res
@@ -308,6 +354,7 @@ class Gloss:
     number: str = None
     pos: str = None
     fn: str = None
+    qualifier: str = None  # Typically a gloss number.
 
     def key(self):
         return (self.gloss, self.pos, self.comment)
@@ -337,6 +384,7 @@ class Gloss:
             gloss=d['gloss'],
             comment=d['comments'] or None,
             morpheme_gloss=d['morpheme_gloss'],
+            qualifier=d['qualifier'],
             sources=d['sources'])
 
     def __str__(self):
@@ -354,6 +402,7 @@ class Form:
     forms: typing.List[str]
     glosses: typing.List[Gloss] = None
     subgroup: str = None
+    footnote_number: str = None
 
 
 @dataclasses.dataclass
@@ -391,7 +440,8 @@ class Protoform(Form):
         kw['pfdoubt'] = bool(m.group('pfdoubt'))
         kw['pldoubt'] = bool(m.group('pldoubt'))
         pos = m.group('pos') or None
-        # FIXME: root, fn!
+        # FIXME: root!
+        fn = (m.group('fn') or '').replace('[', '').replace(']', '').strip() or None
         rem = line[m.end(0):].strip()
 
         forms, rem = parse_protoform(rem, kw['lang'])
@@ -402,7 +452,8 @@ class Protoform(Form):
             if rem:
                 assert rem[0] in "('‘[", line
 
-        rem, fn, fnpos = strip_footnote_reference(rem, start_only=True)
+        if not fn:
+            rem, fn, fnpos = strip_footnote_reference(rem, start_only=True)
         if rem:
             assert rem[0] in "('‘[", rem
 
@@ -439,8 +490,13 @@ class Protoform(Form):
                     g['pos'] = pos
                 kw['glosses'].append(Gloss.from_dict(vol, g))
 
+        for g in kw['glosses']:
+            if g.fn:
+                assert not fn
+                fn = g.fn
+
         kw['forms'] = forms
-        return cls(subgroup=subgroup, **kw)
+        return cls(subgroup=subgroup, footnote_number=fn, **kw)
 
 
 @dataclasses.dataclass
@@ -505,19 +561,26 @@ class Reflex(Form):
             for c in iter_graphemes(w):
                 if c != ',':
                     if c not in POC_GRAPHEMES + TRANSCRIPTION:
-                        raise ValueError(c, rem, line)
+                        raise ValueError(c, w, rem, line)
 
         rem, ffn, pos = strip_footnote_reference(rem, start_only=True)
+        assert not (lfn and ffn)
+        fn = lfn or ffn
         assert lang, line
         glosses = [Gloss.from_dict(vol, g) for g in iter_glosses(rem)]
+        for g in glosses:
+            if g.fn:
+                assert not fn
+                fn = g.fn
         assert len([g for g in glosses if g.morpheme_gloss]) < 2
         return cls(
             group=group.strip(),
             lang=lang,
             forms=[word],
             glosses=glosses,
-            lfn=lfn,
-            ffn=ffn,
+            footnote_number=fn,
+            #lfn=lfn,
+            #ffn=ffn,
             morpheme_gloss=glosses[0].morpheme_gloss if glosses else None,
             subgroup=subgroup,
             #pos=pos,
@@ -671,6 +734,21 @@ class Chapter:
         text = vol.replace_cross_refs(text, num)
         return cls(polish_text(header + vol.replace_refs(text, num)), toc, bib)
 
+    def iter_sections(self):
+        anchor = re.compile(r'<a id=\"(?P<sec>s-[0-9\-]+)\">')
+        sec, lines = None, []
+
+        for line in self.text.split('\n'):
+            m = anchor.match(line)
+            if m:
+                if sec:
+                    yield sec, '\n'.join(lines)
+                sec, lines = m.group('sec'), []
+            else:
+                lines.append(line)
+        if sec:
+            yield sec, '\n'.join(lines)
+
 
 class Volume:
     def __init__(self, d, langs, bib, sources):
@@ -731,6 +809,9 @@ class Volume:
     def replace_cross_refs(self, s, chapter):
         def repl(m):
             # FIXME: account for (§§10.8–9), where only "§10.8" is matched!
+            if m.string[:m.start()].endswith('['):
+                # We are already in a link!
+                return m.string[m.start():m.end()]
             path, anchor = '', ''
             if m.group('volume'):
                 if m.group('chapter'):
@@ -742,19 +823,37 @@ class Volume:
                     path = '{}-{}'.format(self.num, m.group('chapter'))
                 else:
                     path = '{}-{}'.format(self.num, chapter)
-            if m.group('section'):
-                anchor = 's-{}'.format(m.group('section'))
-                if m.group('subsection'):
-                    anchor += '-{}'.format(m.group('subsection'))
-                    if m.group('subsubsection'):
-                        anchor += '-{}'.format(m.group('subsubsection'))
+            if 'section' in m.groupdict():
+                if m.group('section'):
+                    anchor = 's-{}'.format(m.group('section'))
+                    if m.group('subsection'):
+                        anchor += '-{}'.format(m.group('subsection'))
+                        if m.group('subsubsection'):
+                            anchor += '-{}'.format(m.group('subsubsection'))
 
             res = '[{}](ContributionTable{}#cldf:{})'.format(m.string[m.start():m.end()], '?anchor=' + anchor if anchor else '', path)
             return res
         #
         # FIXME: replace pattern with pages!
         #
-        return refs.CROSS_REF_PATTERN.sub(repl, s)
+        res = refs.CROSS_REF_PATTERN.sub(repl, s)
+        res = refs.CROSS_REF_PATTERN_NO_SECTION.sub(repl, res)
+
+        def figref(m):
+            label = m.string[m.start():m.end()]
+            if m.string[:m.start()].strip()[-1] in {':', '_'}:
+                return label
+            if m.string[m.end():].strip().startswith(':'):
+                return label
+            if m.group('type') in {'Figure', 'Map'}:
+                a = '{}-{}-{}'.format(m.group('type').lower()[:3], self.num, m.group('num').replace('.', '_'))
+                return '[{}](#{})'.format(label, a)
+            if m.group('type') == 'Table':
+                return '[{}](#table-{})'.format(label, m.group('num'))
+            return label
+
+        res = refs.FIGURE_REF_PATTERN.sub(figref, res)
+        return res
 
     def replace_refs(self, s, chapter=None):
         for srcid, pattern in self.source_pattern_dict.items():

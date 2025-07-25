@@ -1,5 +1,15 @@
 import re
 
+SUB = [
+    '₊₁',
+    '₋₁',
+    '₊₂',
+    '₋₂',
+    '₊₃',
+    '₋₃',
+    '₊₄',
+    '₋₄',
+]
 
 fn_pattern = re.compile(r'\[(?P<fn>[0-9]+)]')  # [2]
 #
@@ -18,7 +28,7 @@ POC_BIPA_GRAPHEMES = {
 }
 TRANSCRIPTION = [
     'C', 'L', 'F', 'N', 'M', 'L',  # CLF and NML
-    '’', '(', ')', '[', ']', '<', '>', '-', '~', '=',  # enclitic boundary
+    '⟨', '⟩', '’', '(', ')', '[', ']', '-', '~', '=',  # enclitic boundary
     'ᵐp', 'ʷa', 'ñʰ', 'jᵐ', 'N', 'ɸ', 'ϕ', 'ɸʷ', 'h', 'vʰ', 'pʰ', 'nʰ', 'mʰ', 'tʰ', 'bˠ', 'ᵑk', 'h́',
     'ᵐb', 'ᵑr', 'lᵐ', 'lʰ',
     'á', 'ˀa', 'yʰ', 'wʷ', 'kʰ', 'oᵑ',
@@ -30,7 +40,7 @@ TRANSCRIPTION = [
     'oᵐ', 'ᴂ', 'ø̄',
     'ǣ', 'aᵐ',
     'ɒ', 'eᵐ', 'ɛᵑ',
-    'ɒ̄',
+    'ɒ̄', 'nᵐ',
     'ūᵑ', 'fʰ', 'f',
     'z', 'ẓ',
     'tᫀ', 'dᫀ', 'nᫀ',
@@ -155,11 +165,11 @@ PROTO = {
     "Proto Central Vanuatu": ['v'],
     "PSV": ['z', 'v', 'ə', 'ɣ'],
     "PSOc": ['v'],  # Proto Southern Oceanic
-    "Proto Remote Oceanic": ['v'], # NCV, SV, Mic
+    "PROc": ['v'], # NCV, SV, Mic
     "PCP": ['z', 'ō', 'ī', 'ŋʷ', 'x', 'ð', 'ĩ', 'ē', 'v', 'ā', 'gʷ'],  # Proto Central Pacific, Fij
     "PPn": ['ʔ', 'h', 'ō', 'f', 'ū', 'z', 'V', 'ī', 'ə̄', 'ə'],  # PN
-    "Proto Eastern Polynesian": ['f'],
-    "Proto Eastern Polynesian-Northern Outlier": [],
+    "PEPn": ['f'],
+    "PEPn-Northern Outlier": [],
     "PCEPn": ['ō', 'f', 'ū', 'z', 'V', 'ī', 'ə̄', 'ə'],  # Proto Central Eastern Polynesian; Hawaiian, Maori, Tuamotuan
     "PNPn": ['f', 'ū', 'ʔ', 'ā', 'h'],
     # Other Austronesian:

@@ -10,13 +10,12 @@ from pytlopo.config import proto_pattern, witness_pattern, fn_pattern
 
 CF_LINE_PREFIX = 'cf. also'
 
-h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
-h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
-h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
-h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>[A-Z].+)')
+h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
+h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
+h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
+h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
 
-figure_pattern = re.compile(r'Figure\s+[0-9]+[a-z]*(\.[0-9])?:')
-map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9])?):')
+map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9]+)?):')
 
 
 def is_forms_line(line):
@@ -50,9 +49,6 @@ def formblock(lines):
 
 def igt_group(lines):
     return lines
-    assert len(lines) % 3 == 1
-    assert re.match(r'\([0-9]+\)', lines[0])
-    return lines[0], [lines[i:i + 3] for i in range(0, len(lines), 3)]
 
 
 def make_paragraph(lines, voldir):
@@ -105,12 +101,13 @@ def make_paragraph(lines, voldir):
         p = voldir / 'maps' / '{}_{}.png'.format(mtype, m.group('num'))
         if p.exists():
             caption = ' '.join(l.strip() for l in lines)
+            label, _, caption = caption.partition(':')
             return """\
 <a id="{}"> </a>
 
-[{}](MediaTable#cldf:{})
+[__{}:__ {}](MediaTable#cldf:{})
 
-""".format(fid, caption, fid)
+""".format(fid, label, caption.strip(), fid)
     return ' '.join(l.strip() for l in lines)
 
 

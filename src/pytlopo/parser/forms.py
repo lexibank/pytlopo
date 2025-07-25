@@ -170,9 +170,9 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
         elif c == ']':
             #assert in_sbracket, f
             in_sbracket = False
-        elif c == '<':
+        elif c == '⟨':
             in_abracket = True
-        elif c == '>':
+        elif c == '⟩':
             assert in_abracket, f
             in_abracket = False
         elif c == '~':
@@ -295,8 +295,11 @@ def iter_glosses(s):
         gloss = rem[1:-1].strip()
 
     yield dict(
-            pos=pos,
-            species=species,
-            gloss=gloss.replace("__s", quotes[1] + 's') if gloss else gloss,
-            morpheme_gloss=morpheme_gloss,
-            fn=fn, comments=comments or [], qualifier=qualifier, uncertain=bool(uncertain))
+        pos=pos,
+        species=species,
+        gloss=gloss.replace("__s", quotes[1] + 's') if gloss else gloss,
+        morpheme_gloss=morpheme_gloss,
+        fn=fn,
+        comments=comments or [],
+        qualifier=qualifier,
+        uncertain=bool(uncertain))

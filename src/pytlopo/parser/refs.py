@@ -32,12 +32,23 @@ CROSS_REF_PATTERN = re.compile(  # #s-<section>-<subsection>-<subsubsection>
     r'(\s*\.\s*(?P<subsection>[0-9]+))?'
     r'(\s*\.\s*(?P<subsubsection>[0-9]+))?')
 
+# FIXME: Need additional pattern for refs without section:
+# FIXME: vol.1, ch.3
+CROSS_REF_PATTERN_NO_SECTION = re.compile(
+    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\()\s*)'
+    r'((C|c)h(apter|\.)?\s*(?P<chapter>[0-9]+),\s*)'
+)
+
 CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>
     r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\())\s*pp?\.\s*(?P<page>[0-9]+)')
 
 #
 # match reconstruction refs: "POc *paus, *paus-i- 'weave, plait'"
 #
+
+
+FIGURE_REF_PATTERN = re.compile(r'(?P<type>Table|Figure|Map)\s+(?P<num>[0-9]+(\.[0-9]+)?)')
+
 
 
 def key_to_regex(key, in_text=True):
@@ -51,7 +62,7 @@ def key_to_regex(key, in_text=True):
         year = comps[-1]
         if in_text:
             return re.compile(r"{}('s)?(,\s*eds?,\s*)?\s*\(?{}".format(authors, year))
-        return re.compile(r"\(((?P<qualifier>after|from)\s+)?{}('s)?(,\s*eds?,\s*)?\s*{}(\s*\:\s*(?P<pages>[^,;\)]+))?\)".format(authors, year))
+        return re.compile(r"\(((?P<qualifier>after|from)\s+)?{}(['’]s)?(,\s*eds?,\s*)?\s*{}(\s*\:\s*(?P<pages>[^,;\)]+))?\)".format(authors, year))
     if in_text:
         return re.compile(r"\s+{}(\s|\.|,)".format(comps[0]))
     return re.compile(r"\({}\)".format(comps[0]))
