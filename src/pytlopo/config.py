@@ -152,7 +152,7 @@ PROTO = {
     "PPT": ['v'], # PT
     "PEOc": ['z', 'v', 'ŋʷ', 'C'],  # NCal
     "PNCal": ['v', 'hʷ', 'kʰ'],
-    "Proto Southeast Solomonic": ['ɣ', 'v'],  # FIXME: identify with PSS
+    "PSES": ['ɣ', 'v'],  # FIXME: identify with PSS
     "PSS": ['v', 'ɣ'], # SES
     "PGMic": [],
     "PMic": ['T', 'S', 'x', 'ō', 'f', 'ū', 'z', 'V', 'ī', 'ə̄', 'ə'],  # Proto Micronesian Mic

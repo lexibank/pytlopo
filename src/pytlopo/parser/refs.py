@@ -39,8 +39,8 @@ CROSS_REF_PATTERN_NO_SECTION = re.compile(
     r'((C|c)h(apter|\.)?\s*(?P<chapter>[0-9]+),\s*)'
 )
 
-CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>
-    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\())\s*pp?\.\s*(?P<page>[0-9]+)')
+CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>  or  (vol.4:278)
+    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\(|\:))\s*(pp?\.)?\s*(?P<page>[0-9][0-9]+)')
 
 #
 # match reconstruction refs: "POc *paus, *paus-i- 'weave, plait'"
@@ -61,7 +61,7 @@ def key_to_regex(key, in_text=True):
         authors = r'\s+'.join([re.escape(c) if c not in {'&', 'and'} else r'(and|&)' for c in comps[:-1]])
         year = comps[-1]
         if in_text:
-            return re.compile(r"{}('s)?(,\s*eds?,\s*)?\s*\(?{}".format(authors, year))
+            return re.compile(r"{}(['’]s)?(,\s*eds?,\s*)?\s*\(?{}".format(authors, year))
         return re.compile(r"\(((?P<qualifier>after|from)\s+)?{}(['’]s)?(,\s*eds?,\s*)?\s*{}(\s*\:\s*(?P<pages>[^,;\)]+))?\)".format(authors, year))
     if in_text:
         return re.compile(r"\s+{}(\s|\.|,)".format(comps[0]))

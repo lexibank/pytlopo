@@ -35,8 +35,8 @@ class Reference:
     def cldf_id(self):
         res = self.id
         if self.pages:
-            assert '[' not in self.pages
-            res += '[{}]'.format(self.pages)
+            res += '[{}]'.format(
+                self.pages.replace('[', '［').replace(']', '］'))
         return res
 
 
@@ -333,7 +333,7 @@ def comment_or_sources(vol, cmt):
     If `cmt` can be parsed as comma-separated list of references, these are returned.
     """
     srcs, with_pages = [], False
-    for chunk in cmt.split(','):
+    for chunk in re.split(r',|;', cmt):
         chunk = chunk.strip()
         res = vol.match_ref(chunk)
         if res:
@@ -403,6 +403,7 @@ class Form:
     glosses: typing.List[Gloss] = None
     subgroup: str = None
     footnote_number: str = None
+    morpheme_gloss: str = None
 
 
 @dataclasses.dataclass
@@ -481,6 +482,10 @@ class Protoform(Form):
         elif rem:
             assert rem[0] in "'‘[", line
 
+        if rem.startswith('[') and rem.endswith(']'):
+            kw['morpheme_gloss'] = rem[1:-1].strip()
+            rem = ''
+
         if rem:
             # Now consume the gloss.
             kw['glosses'] = []
@@ -504,7 +509,6 @@ class Reflex(Form):
     group: str = None
     lfn: str = None  # Footnote with comment about the language.
     ffn: str = None  # Footnote with comment about the form.
-    morpheme_gloss: str = None
 
     @property
     def form(self):
@@ -623,7 +627,9 @@ class Reconstruction(DataReference):
                 return pf.glosses[0].gloss
             if pf.comment:
                 return pf.comment
-        return self.reflexes[0].glosses[0].gloss
+            if pf.morpheme_gloss:
+                return pf.morpheme_gloss
+        return self.reflexes[0].morpheme_gloss or self.reflexes[0].glosses[0].gloss
 
     def key(self):
         if not self.section:
@@ -716,6 +722,7 @@ class Chapter:
     text: str
     toc: list
     bib: Source
+    pages: list
 
     @classmethod
     def from_text(cls, vol, num, text, toc):
@@ -725,6 +732,12 @@ class Chapter:
         else:
             raise ValueError('Chapter number {} not found'.format(num))
 
+        pages = set()
+        for m in re.finditer(r'<a id="p-(?P<num>[0-9]+)">', text):
+            pages.add(int(m.group('num')))
+        spage, _, epage = md['pages'].partition('-')
+        pages = list(range(int(spage), int(epage) + 1))
+
         bib = Source('incollection', vol.bib.id + '-' + md['number'], **{k: v for k, v in vol.bib.items()})
         bib['booktitle'] = bib.pop('title')
         bib['title'] = md['title']
@@ -732,7 +745,7 @@ class Chapter:
         bib['pages'] = md['pages']
         header = "\n[{}](.smallcaps)\n\n".format(md['author'])
         text = vol.replace_cross_refs(text, num)
-        return cls(polish_text(header + vol.replace_refs(text, num)), toc, bib)
+        return cls(polish_text(header + vol.replace_refs(text, num)), toc, bib, pages=pages)
 
     def iter_sections(self):
         anchor = re.compile(r'<a id=\"(?P<sec>s-[0-9\-]+)\">')
@@ -751,7 +764,7 @@ class Chapter:
 
 
 class Volume:
-    def __init__(self, d, langs, bib, sources):
+    def __init__(self, d, langs, bib, sources, chapter_pages):
         self.dir = d
         self.num = d.name[-1]
         self.langs = langs
@@ -761,6 +774,7 @@ class Volume:
         bib['title'] += ' {}: {}'.format(self.num, self.metadata['title'])
         self.bib = bib
         self.sources = sources
+        self.chapter_pages = chapter_pages
 
     def __str__(self):
         return self.bib['title']
@@ -778,7 +792,9 @@ class Volume:
     def chapters(self):
         if not self._lines:
             assert self.reconstructions
-        return {num: Chapter.from_text(self, num, text, toc) for num, text, toc in iter_chapters(self._lines, self.dir)}
+        return collections.OrderedDict(
+            (num, Chapter.from_text(self, num, text, toc))
+            for num, text, toc in iter_chapters(self._lines, self.dir))
 
     @functools.cached_property
     def source_in_brackets_pattern_dict(self):
@@ -838,6 +854,23 @@ class Volume:
         #
         res = refs.CROSS_REF_PATTERN.sub(repl, s)
         res = refs.CROSS_REF_PATTERN_NO_SECTION.sub(repl, res)
+
+        def prepl(m):
+            page = int(m.group('page'))
+            for cid, (s, e) in self.chapter_pages.items():
+                v, _, c = cid.partition('-')
+                if v == m.group('volume') and page >= s and page <= e:
+                    break
+            else:
+                return m.string[m.start():m.end()]
+            return '[vol.{}{}{}](ContributionTable?anchor=p-{}#cldf:{})'.format(
+                m.group('volume'),
+                m.group('sep'),
+                m.group('page'),
+                m.group('page'),
+                cid)
+
+        res = refs.CROSS_REF_PATTERN_PAGES.sub(prepl, res)
 
         def figref(m):
             label = m.string[m.start():m.end()]

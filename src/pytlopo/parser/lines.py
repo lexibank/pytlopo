@@ -14,6 +14,7 @@ h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
 h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
 h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
 h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
+h5_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)(\.|\s)\s*(?P<e>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
 
 map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9]+)?):')
 
@@ -178,6 +179,12 @@ def iter_chapters(lines, voldir):
             title = '{title}'.format(**m.groupdict())
             chapter.append('\n<a id="{}"></a>\n\n#### {} {}\n'.format(link, number, title))
             toc.append((3, link, strip_footnote_reference(title)[0]))
+            continue
+
+        m = h5_pattern.match(line)
+        if m:
+            number = '{b}.{c}.{d}.{e}.'.format(**m.groupdict())
+            chapter.append('\n##### {} {}\n'.format(number, m.group('title')))
             continue
 
         if not line.strip():
