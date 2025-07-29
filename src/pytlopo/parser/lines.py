@@ -10,11 +10,11 @@ from pytlopo.config import proto_pattern, witness_pattern, fn_pattern
 
 CF_LINE_PREFIX = 'cf. also'
 
-h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
-h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
-h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
-h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
-h5_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)(\.|\s)\s*(?P<e>[0-9]+)\.?\s+(?P<title>\_?[A-Z].+)')
+h1_pattern = re.compile(r'(?P<a>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[A-Z].+)')
+h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[A-Z].+)')
+h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[mA-Z].+)')
+h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[\*A-Z].+)')
+h5_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)(\.|\s)\s*(?P<e>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[\*A-Z].+)')
 
 map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9]+)?):')
 

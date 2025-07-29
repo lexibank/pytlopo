@@ -64,7 +64,7 @@ TRANSCRIPTION = [
     'I',
     'ɨ̈', 'ĩ̄', 'ɨ̄',
     'ị', 'ı', 'ıː', 'ɪ',
-    'ʈ', '̄t',
+    'ʈ', '̄t', 't̼',
     't', 'ṭ', '†', 'tᫀ',
     'x',
     'θ', 'ø', 'φ',
@@ -150,8 +150,8 @@ PROTO = {
     "PNGOc": ['kʷ'],  # Proto New Guinea Oceanic, i.e. PWOc without reflexes from MM
     "PNNG": ['v'], # NNG
     "PPT": ['v'], # PT
-    "PEOc": ['z', 'v', 'ŋʷ', 'C'],  # NCal
-    "PNCal": ['v', 'hʷ', 'kʰ'],
+    "PEOc": ['z', 'v', 'ŋʷ', 'C'],
+    "PNCal": ['v', 'hʷ', 'kʰ', 'ᵐb', ],
     "PSES": ['ɣ', 'v'],  # FIXME: identify with PSS
     "PSS": ['v', 'ɣ'], # SES
     "PGMic": [],
@@ -207,11 +207,9 @@ PROTO = {
     "Proto S Efate/SV": [],
     "Proto Solomons Outlier": ['f'],
     "Proto Willaumez": ['h'],
-    "Proto New Caledonia": ['v', 'ᵐb', ],
     "Proto North New Caledonia": ['ᵐb', ],
     "Proto Far North New Caledonia": [],
     "Proto Central/Eastern Polynesian": [],
-    "Proto New Guinea Oceanic": [],
     "Proto Guadalcanal-Gelic": [],
     "Proto N Malakula": ['ɣ', ],
     "Proto CW Malakula": ['ɣ', 'v'],
@@ -623,6 +621,7 @@ KINSHIP = [
     'WSZ',
     'WZ',
     'WZC',
+    'WZCC',
     'WZeH',
     'WZS',
     'WZyH',

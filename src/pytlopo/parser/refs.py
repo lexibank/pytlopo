@@ -40,7 +40,7 @@ CROSS_REF_PATTERN_NO_SECTION = re.compile(
 )
 
 CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>  or  (vol.4:278)
-    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\(|\:))\s*(pp?\.)?\s*(?P<page>[0-9][0-9]+)')
+    r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\(|\:))\s*(pp?\.?)?\s*(?P<page>[0-9][0-9]+)')
 
 #
 # match reconstruction refs: "POc *paus, *paus-i- 'weave, plait'"
