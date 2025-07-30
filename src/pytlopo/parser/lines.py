@@ -15,8 +15,16 @@ h2_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)\.?\s+(?P<title>([
 h3_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[mA-Z].+)')
 h4_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[\*A-Z].+)')
 h5_pattern = re.compile(r'(?P<a>[0-9]+)(\.|\s)\s*(?P<b>[0-9]+)(\.|\s)\s*(?P<c>[0-9]+)(\.|\s)\s*(?P<d>[0-9]+)(\.|\s)\s*(?P<e>[0-9]+)\.?\s+(?P<title>([\_‘♂])?[\*A-Z].+)')
+_pageno_right_pattern = re.compile(r'(\x0c|###newpage###)\s+[^0-9]+(?P<no>[0-9]+)')
+_pageno_left_pattern = re.compile(r'(\x0c|###newpage###)(?P<no>[0-9]+)\s+[^0-9]+')
 
 map_pattern = re.compile(r'(?P<type>Map|Figure)\s+(?P<num>[0-9]+[a-z]*(\.[0-9]+)?):')
+
+
+def match_pageno(line):
+    m = _pageno_left_pattern.fullmatch(line) or _pageno_right_pattern.fullmatch(line)
+    if m:
+        return m.group('no')
 
 
 def is_forms_line(line):
@@ -128,16 +136,8 @@ def make_chapter(paras):
 def iter_chapters(lines, voldir):
     from pytlopo.parser.forms import strip_footnote_reference
 
-    pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
-    pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
-    # replace page numbers with anchors p-...
-    # add anchor to sections! s-...
-    # Reformat footnotes [^1] and [^1]: ...
-    # Turn footnotes into endnotes.
-    # Split into markdown docs per chapter. -> remove chapter number from section headings
     chapter, toc, para = [], [], []
     in_chapter = None
-    pageno = -1
     for line in lines:
         m = h1_pattern.match(line)
         if m:
@@ -149,42 +149,32 @@ def iter_chapters(lines, voldir):
         if not in_chapter:
             continue
 
-        m = pageno_left_pattern.fullmatch(line) or pageno_right_pattern.fullmatch(line)
-        if m:  # Page number line.
-            chapter.append('\n<a id="p-{}"></a>'.format(m.group('no')))
+        pageno = match_pageno(line)
+        if pageno:  # Page number line.
+            chapter.append('\n<a id="p-{}"></a>'.format(pageno))
             continue
 
-        m = h2_pattern.match(line)
-        if m:
-            link = 's-{b}'.format(**m.groupdict())
-            number = '{b}.'.format(**m.groupdict())
-            title = '{title}'.format(**m.groupdict())
-            chapter.append('\n<a id="{}"></a>\n\n## {} {}\n'.format(link, number, title))
-            toc.append((1, link, strip_footnote_reference(title)[0]))
-            continue
-
-        m = h3_pattern.match(line)
-        if m:
-            link = 's-{b}-{c}'.format(**m.groupdict())
-            number = '{b}.{c}.'.format(**m.groupdict())
-            title = '{title}'.format(**m.groupdict())
-            chapter.append('\n<a id="{}"></a>\n\n### {} {}\n'.format(link, number, title))
-            toc.append((2, link, strip_footnote_reference(title)[0]))
-            continue
-
-        m = h4_pattern.match(line)
-        if m:
-            link = 's-{b}-{c}-{d}'.format(**m.groupdict())
-            number = '{b}.{c}.{d}.'.format(**m.groupdict())
-            title = '{title}'.format(**m.groupdict())
-            chapter.append('\n<a id="{}"></a>\n\n#### {} {}\n'.format(link, number, title))
-            toc.append((3, link, strip_footnote_reference(title)[0]))
-            continue
-
-        m = h5_pattern.match(line)
-        if m:
-            number = '{b}.{c}.{d}.{e}.'.format(**m.groupdict())
-            chapter.append('\n##### {} {}\n'.format(number, m.group('title')))
+        header = False
+        for level, pattern, link_format, number_format in [
+            (1, h2_pattern, 's-{b}', '{b}.'),
+            (2, h3_pattern, 's-{b}-{c}', '{b}.{c}.'),
+            (3, h4_pattern, 's-{b}-{c}-{d}', '{b}.{c}.{d}.'),
+            (4, h4_pattern, None, '{b}.{c}.{d}.{e}.'),
+        ]:
+            m = pattern.match(line)
+            if m:
+                number = number_format.format(**m.groupdict())
+                title = '{title}'.format(**m.groupdict())
+                if link_format:
+                    link = link_format.format(**m.groupdict())
+                    chapter.append('\n<a id="{}"></a>\n\n{} {} {}\n'.format(
+                        link, (level + 1) * '#', number, title))
+                    toc.append((level, link, strip_footnote_reference(title)[0]))
+                else:
+                    chapter.append('\n{} {} {}\n'.format((level + 1) * '#', number, title))
+                header = True
+                break
+        if header:
             continue
 
         if not line.strip():
@@ -200,8 +190,6 @@ def iter_chapters(lines, voldir):
 
 
 def extract_blocks(lines, factory=formblock, start='<', end='>'):
-    pageno_right_pattern = re.compile(r'\x0c\s+[^0-9]+(?P<no>[0-9]+)')
-    pageno_left_pattern = re.compile(r'\x0c(?P<no>[0-9]+)\s+[^0-9]+')
     pageno = -1
     block = []
     h1, h2, h3 = None, None, None
@@ -209,9 +197,9 @@ def extract_blocks(lines, factory=formblock, start='<', end='>'):
 
     new_lines = []
     for i, line in enumerate(lines, start=1):
-        m = pageno_left_pattern.fullmatch(line) or pageno_right_pattern.fullmatch(line)
+        m = match_pageno(line)
         if m:  # Page number line.
-            pageno = int(m.group('no'))
+            pageno = int(m)
             assert not in_block, pageno
             new_lines.append(line)
             continue

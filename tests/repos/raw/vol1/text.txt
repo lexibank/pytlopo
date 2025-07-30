@@ -2,6 +2,9 @@
 
 1.1 Section
 
+
+1.1.1 Subsection
+
 <
 POc *mata 'eye'
  Adm: Language word
@@ -12,6 +15,10 @@ __igt__
   a b c
   A B C
   'translation'
+
+###newpage###5 Sub
+
+1.1.1.1 Subsubsection
 
 <
 POc *mata 'eye'
@@ -26,6 +33,9 @@ __igt__
   A B C
   'translation'
 
+1.1.1.1.1 Subsubsubsection
+
 __formgroup__
  Adm: Language word
 
+The end
