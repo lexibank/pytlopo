@@ -1,1 +1,31 @@
 1 Introduction
+
+1.1 Section
+
+<
+POc *mata 'eye'
+ Adm: Language word
+>
+
+__igt__
+  Language (Adm)
+  a b c
+  A B C
+  'translation'
+
+<
+POc *mata 'eye'
+ Adm: Language word
+cf. also:
+ Adm: Language other 'gloss'
+>
+
+__igt__
+  Language (Adm)
+  a b c
+  A B C
+  'translation'
+
+__formgroup__
+ Adm: Language word
+

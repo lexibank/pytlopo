@@ -86,7 +86,7 @@ def test_iter_glosses_multiple():
         ("bubuŋ, *second 'ridgepole'", (["bubuŋ", "second"], "'ridgepole'")),
         ("bu(b,g)uŋ 'ridgepole'", (["bu(b,g)uŋ"], "'ridgepole'")),
         ("bu[b,g]uŋ 'ridgepole'", (["bu[b,g]uŋ"], "'ridgepole'")),
-        ("bu<b>uŋ 'ridgepole'", (["bu<b>uŋ"], "'ridgepole'")),
+        ("bu⟨b⟩uŋ 'ridgepole'", (["bu⟨b⟩uŋ"], "'ridgepole'")),
         ("|bubuŋ  second| 'ridgepole'", (["bubuŋ second"], "'ridgepole'")),
         ("|pa pa|, *qa-pa ‘t’", (["pa pa", "qa-pa"], "‘t’")),
         ("|pa pa| *qa-pa ‘t’", (["pa pa", "qa-pa"], "‘t’")),

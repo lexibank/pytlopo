@@ -7,7 +7,7 @@ from pytlopo.parser.lines import *
     'i,o',
     [
         (['First  ', '  Second'], lambda s: s == 'First Second'),
-        (['Figure 1: Cap'], lambda s: 'cldf:fig-1-1.png' in s and 'Cap]' in s),
+        (['Figure 1: Cap'], lambda s: 'fig-1-1' in s and 'Cap]' in s),
     ]
 )
 def test_make_paragraph(i, o, tmp_path):

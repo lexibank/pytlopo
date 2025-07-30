@@ -219,7 +219,19 @@ def get_quotes(s):
     return "‘’" if "‘" in s else "''"
 
 
-def iter_glosses(s):
+class GlossDict(typing.TypedDict):
+        gloss: typing.Optional[str]
+        morpheme_gloss: typing.Optional[str]
+        pos: typing.Optional[str]
+        species: typing.Optional[str]
+        fn: typing.Optional[str]
+        comments: list
+        qualifier: typing.Optional[str]
+        uncertain: typing.Optional[bool]
+        sources: typing.Optional[list]
+
+
+def iter_glosses(s) -> typing.Generator[GlossDict, None, None]:
     quotes = get_quotes(s)
 
     gloss, pos, qualifier, fn, uncertain, comments = None, None, None, None, False, []
@@ -294,7 +306,7 @@ def iter_glosses(s):
         assert quotes[0] not in rem[1:-1], rem
         gloss = rem[1:-1].strip()
 
-    yield dict(
+    yield GlossDict(
         pos=pos,
         species=species,
         gloss=gloss.replace("__s", quotes[1] + 's') if gloss else gloss,

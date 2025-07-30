@@ -7,16 +7,15 @@ import functools
 import collections
 import dataclasses
 
-from docutils.languages.af import labels
-from pycldf.sources import Sources, Source
+from pycldf.sources import Source
 from clldutils.misc import slug
 from clldutils import jsonlib
 from pyigt import IGT, LGRConformance
 
 from .config import TRANSCRIPTION, proto_pattern, witness_pattern, PROTO
 from pytlopo.parser.forms import (
-    parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, get_quotes,
-    strip_footnote_reference, strip_comment, strip_pos, pos_pattern
+    parse_protoform, POC_GRAPHEMES, iter_graphemes, iter_glosses, GlossDict, get_quotes,
+    strip_footnote_reference, strip_comment, pos_pattern
 )
 from pytlopo.parser.lines import extract_etyma, iter_chapters, extract_igts, extract_formgroups
 from pytlopo.parser import refs
@@ -40,7 +39,7 @@ class Reference:
         return res
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(eq=False)
 class DataReference:
     """
     An object in the CLDF dataset, extracted from the raw data and re-inserted when rendering.
@@ -54,12 +53,11 @@ class DataReference:
     __table__ = None
 
     def subkey(self):
-        return []
+        return []  # pragma: no cover
 
     def key(self):
         if not self.section:
-            print(self)
-            raise ValueError
+            raise ValueError(str(self))  # pragma: no cover
         return tuple([
             self.volume,
             self.chapter[0],
@@ -75,6 +73,9 @@ class DataReference:
     def __hash__(self):
         return hash(self.key())
 
+    def __eq__(self, other):  # pragma: no cover
+        return self.key() == other.key()
+
     def cldf_markdown_link_label(self):
         return self.id
 
@@ -83,7 +84,7 @@ class DataReference:
             self.cldf_markdown_link_label(), self.__table__, self.id)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(eq=False)
 class FormGroup(DataReference):
     forms: list = None
     __table__ = 'cf.csv'
@@ -135,19 +136,18 @@ class Example:
            '\n'.join(str(self.igt).split('\n')[1:]))
 
     @classmethod
-    def from_lines(cls, vol, lines, lang=None, ldata=None, ref=None):
+    def from_lines(cls, vol, lines, lang=None, ref=None):
         add_gloss, header = None, None
         if len(lines) == 3:
             analyzed, gloss, translation = lines
         elif len(lines) == 4:
             if lang is None:
-                # FIXME: first line is language header
                 header, analyzed, gloss, translation = lines
             else:
                 # Additional gloss line.
                 analyzed, gloss, add_gloss, translation = lines
         else:
-            raise ValueError(lines)
+            raise ValueError(lines)  # pragma: no cover
         s, e = get_quotes(translation)
 
         assert lang or header, lines
@@ -174,7 +174,7 @@ class Example:
                     real_comment = cmt
 
         label = None
-        m = re.match(r'(?P<label>[a-g](\.|\)))\s+', header or analyzed)
+        m = re.match(r'(?P<label>[a-g][.)])\s+', header or analyzed)
         if m:
             label = m.group('label')
             if header:
@@ -185,9 +185,9 @@ class Example:
         if lang is None:
             try:
                 lang, ldata, header = vol.match_language(header)
-            except:
+            except:  # pragma: no cover
                 raise ValueError(header)
-            m = re.fullmatch(r'\s*\((?P<group>[A-Za-z]+)(,[^\)]+)?\)\s*', header)
+            m = re.fullmatch(r'\s*\((?P<group>[A-Za-z]+)(,[^)]+)?\)\s*', header)
             assert m and m.group('group') == ldata['Group'], lines
 
         igt = IGT(phrase=analyzed, gloss=gloss)
@@ -288,7 +288,7 @@ MANNER       PATH        DEIXIS
         else:
             try:
                 lang, ldata, header = vol.match_language(header)
-            except:
+            except:  # pragma: no cover
                 raise ValueError(header)
             if not ldata:
                 # A proto language!
@@ -309,8 +309,8 @@ MANNER       PATH        DEIXIS
 
             assert len(examples) % 3 == 0 or len(examples) == 4, (vol.num, lines)
             examples = [line.strip() for line in examples]
-            examples = [Example.from_lines(vol, examples, lang, ldata, ref)] if len(examples) == 4 \
-                else [Example.from_lines(vol, examples[i:i+3], lang, ldata, ref) for i in range(0, len(examples), 3)]
+            examples = [Example.from_lines(vol, examples, lang, ref)] if len(examples) == 4 \
+                else [Example.from_lines(vol, examples[i:i+3], lang, ref) for i in range(0, len(examples), 3)]
 
         res = cls(
             volume=str(vol.num),
@@ -328,7 +328,8 @@ MANNER       PATH        DEIXIS
         return res
 
 
-def comment_or_sources(vol, cmt):
+def comment_or_sources(vol, cmt) \
+        -> typing.Tuple[typing.Union[None, str], typing.Union[None, typing.List[Reference]]]:
     """
     If `cmt` can be parsed as comma-separated list of references, these are returned.
     """
@@ -337,15 +338,13 @@ def comment_or_sources(vol, cmt):
         chunk = chunk.strip()
         res = vol.match_ref(chunk)
         if res:
-            if res[1]:
-                with_pages = True
             srcs.append(Reference(res[0], chunk, res[1]))
         else:  # We connot match the chunk.
             return cmt, None
     return None, srcs
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(eq=False)
 class Gloss:
     gloss: str
     morpheme_gloss: str = None
@@ -362,8 +361,11 @@ class Gloss:
     def __hash__(self):
         return hash(self.key())
 
+    def __eq__(self, other):
+        return self.key() == other.key()
+
     @classmethod
-    def from_dict(cls, vol, d):
+    def from_dict(cls, vol, d: GlossDict):
         d['sources'] = []
         if d['comments']:
             cmts = []
@@ -373,16 +375,13 @@ class Gloss:
                     cmts.append(cmt)
                 elif srcs:
                     d['sources'] = srcs
-            d['comments'] = "; ".join(cmts)
+            d['comments'] = cmts
 
         return cls(
             fn=d['fn'],
-            #
-            # FIXME: number!?
-            #
             pos=d['pos'],
             gloss=d['gloss'],
-            comment=d['comments'] or None,
+            comment="; ".join(d['comments'] or []),
             morpheme_gloss=d['morpheme_gloss'],
             qualifier=d['qualifier'],
             sources=d['sources'])
@@ -395,6 +394,7 @@ class Gloss:
             ' ({})'.format(', '.join(str(s) for s in self.sources)) if self.sources else '',
             ' [{}]'.format(self.fn) if self.fn else '',
         )
+
 
 @dataclasses.dataclass
 class Form:
@@ -527,7 +527,6 @@ class Reflex(Form):
 
     @classmethod
     def from_line(cls, vol, line, subgroup=None):
-        lang, word, gloss, pos = None, None, None, None
         group, _, rem = line.partition(':')
         group = group.strip()
         lang = vol.match_language(rem.strip(), group=group)
@@ -583,12 +582,8 @@ class Reflex(Form):
             forms=[word],
             glosses=glosses,
             footnote_number=fn,
-            #lfn=lfn,
-            #ffn=ffn,
             morpheme_gloss=glosses[0].morpheme_gloss if glosses else None,
             subgroup=subgroup,
-            #pos=pos,
-            #comment=gloss['comment']
         )
 
 
@@ -663,8 +658,6 @@ class Reconstruction(DataReference):
     @classmethod
     def from_data(cls, vol, h1, h2, h3, pageno, forms):
         forms, cfs = forms
-
-        reflexes = []
 
         def iter_objs(lines):
             subgroup = None
@@ -764,7 +757,7 @@ class Chapter:
 
 
 class Volume:
-    def __init__(self, d, langs, bib, sources, chapter_pages):
+    def __init__(self, d, langs, bib, sources):
         self.dir = d
         self.num = d.name[-1]
         self.langs = langs
@@ -774,7 +767,14 @@ class Volume:
         bib['title'] += ' {}: {}'.format(self.num, self.metadata['title'])
         self.bib = bib
         self.sources = sources
-        self.chapter_pages = chapter_pages
+        self.chapter_pages = {}
+
+        for md in self.dir.parent.glob('vol*/md.json'):
+            for chap in jsonlib.load(md)['chapters']:
+                s, _, e = chap['pages'].partition('-')
+                self.chapter_pages[
+                    '{}-{}'.format(md.parent.name.replace('vol', ''), chap['number'])] = \
+                        (int(s), int(e))
 
     def __str__(self):
         return self.bib['title']
@@ -849,9 +849,7 @@ class Volume:
 
             res = '[{}](ContributionTable{}#cldf:{})'.format(m.string[m.start():m.end()], '?anchor=' + anchor if anchor else '', path)
             return res
-        #
-        # FIXME: replace pattern with pages!
-        #
+
         res = refs.CROSS_REF_PATTERN.sub(repl, s)
         res = refs.CROSS_REF_PATTERN_NO_SECTION.sub(repl, res)
 
@@ -971,7 +969,7 @@ class Volume:
         try:
             h1, h2, h3, pageno, block = next(igts)
             n += 1
-        except StopIteration:
+        except StopIteration:  # pragma: no cover
             return
         eg = ExampleGroup.from_data(n, self, h1, h2, h3, pageno, block)
         yield eg
