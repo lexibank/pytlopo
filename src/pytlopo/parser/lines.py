@@ -60,7 +60,7 @@ def igt_group(lines):
     return lines
 
 
-def make_paragraph(lines, voldir):
+def make_paragraph(lines, voldir) -> str:
     """
     Lines starting with "|" are a quote.
     If first line is __ul__ ...
@@ -159,7 +159,7 @@ def iter_chapters(lines, voldir):
             (1, h2_pattern, 's-{b}', '{b}.'),
             (2, h3_pattern, 's-{b}-{c}', '{b}.{c}.'),
             (3, h4_pattern, 's-{b}-{c}-{d}', '{b}.{c}.{d}.'),
-            (4, h4_pattern, None, '{b}.{c}.{d}.{e}.'),
+            (4, h5_pattern, None, '{b}.{c}.{d}.{e}.'),
         ]:
             m = pattern.match(line)
             if m:

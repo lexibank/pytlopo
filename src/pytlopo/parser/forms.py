@@ -76,7 +76,7 @@ def strip_comment(s, position='end'):
                         break
                 cmt.append(c)
             else:
-                raise ValueError(s)
+                raise ValueError(s)  # pragma: no cover
             return ''.join(reversed(cmt)).strip(), s[:-i-2].strip()
     else:
         assert position == 'start'
@@ -91,7 +91,7 @@ def strip_comment(s, position='end'):
                         break
                 cmt.append(c)
             else:
-                raise ValueError(s)
+                raise ValueError(s)  # pragma: no cover
             return ''.join(cmt).strip(), s[i+2:].strip()
     return None, s
 
@@ -100,18 +100,18 @@ def iter_graphemes(s):
     g, left = '', ''
     for c in s:
         cat = unicodedata.name(c).split()[0]
-        if cat not in {'MODIFIER', 'COMBINING'}:
+        if cat not in {'MODIFIER', 'COMBINING'}:  # a letter.
             if g:
                 yield g
-            if left:
+            if left:  # concatenate whatever modifiers are left.
                 g = left + c
                 left = ''
             else:
                 g = c
         else:
-            if cat == 'MODIFIER' and g in 'iau':
+            if cat == 'MODIFIER' and g and g in 'iau':  # Modifiers apply from the left.
                 left += c
-            elif g and any(unicodedata.category(cc) == 'Ll' for cc in g):
+            elif g and any(unicodedata.category(cc) == 'Ll' for cc in g):  # We have a letter.
                 g += c
             else:
                 left += c
@@ -191,7 +191,7 @@ def parse_protoform(f, pl, allow_rem=True) -> typing.Tuple[typing.List[str], str
         elif c in phonemes:
             pass
         else:
-            raise ValueError(c, f, pl)
+            raise ValueError(c, f, pl)  # pragma: no cover
         length += len(c)
         form += c
 
@@ -277,7 +277,7 @@ def iter_glosses(s) -> typing.Generator[GlossDict, None, None]:
         rem = rem[m.end():].strip()
 
     m = re.fullmatch(r"\[([^]]+)]", rem)
-    if m:
+    if m:  # A catch-all for stuff that's enclosed in square brackets.
         morpheme_gloss = m.group(1)
         rem = ''
 
@@ -295,6 +295,7 @@ def iter_glosses(s) -> typing.Generator[GlossDict, None, None]:
     comment, rem = strip_comment(rem.strip())
     if comment:
         comments.append(comment)
+        comments = reversed(comments)
 
     m = species_pattern.search(rem)
     if m:

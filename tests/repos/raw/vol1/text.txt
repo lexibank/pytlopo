@@ -25,15 +25,31 @@ POc *mata 'eye'
  Adm: Language word
 cf. also:
  Adm: Language other 'gloss'
+cf. also: Loans
+ Adm: Language other 'gloss'
+>
+
+See Author (2000, 2001) and Table 1.
+
+<
+POc *mata 'eye'
+ Adm: Language word
+cf. also:
+ Adm: Language other 'gloss'
+cf. also: Loans
+ Adm: Language other 'gloss'
 >
 
 __igt__
-  Language (Adm)
+  POc
   a b c
   A B C
   'translation'
 
 1.1.1.1.1 Subsubsubsection
+
+__formgroup__
+ Adm: Language word
 
 __formgroup__
  Adm: Language word

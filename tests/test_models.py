@@ -79,6 +79,12 @@ def test_ExampleGroup(volume1):
         ("(1) 'the gloss'", lambda g: g.qualifier == '1'),
         ("'the gloss' (cmt)", lambda g: g.comment == 'cmt'),
         ("'the gloss' (Author 2000)", lambda g: not g.comment and len(g.sources) == 1),
+        ("'lion' [Panthera leo]", lambda g: g.species == 'Panthera leo'),
+        ("'the gloss' (first) (second)", lambda g: g.comment == 'first; second'),
+        ("? 'the gloss'", lambda g: g.doubt),
+        ("[Not_a_morpheme_gloss]", lambda g: g.morpheme_gloss == 'Not_a_morpheme_gloss'),
+        # Yet another use for morpheme glosses: Kinship term coding.
+        ("‘the gloss’, PZ", lambda g: g.morpheme_gloss == 'PZ'),
     ]
 )
 def test_Gloss(volume1, text, assertion):
@@ -158,13 +164,14 @@ POc *mata 'eye'
  Adm: Language form 'gloss'""".split('\n'), [('loans', [" Adm: Language loan 'yes'"])])
     )
     assert rec.reflexes[1].subgroup == 'sg1'
+    assert rec.poc_gloss == 'eye'
 
 
 def test_Volume(volume1):
     assert len(volume1.chapters) == 1
-    assert len(volume1.reconstructions) == 2
+    assert len(volume1.reconstructions) == 3
     assert len(volume1.igts) == 2
-    assert len(volume1.formgroups) == 1
+    assert len(volume1.formgroups) == 2
 
 
 @pytest.mark.parametrize(

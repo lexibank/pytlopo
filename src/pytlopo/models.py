@@ -354,6 +354,8 @@ class Gloss:
     pos: str = None
     fn: str = None
     qualifier: str = None  # Typically a gloss number.
+    species: str = None
+    doubt: bool = None
 
     def key(self):
         return (self.gloss, self.pos, self.comment)
@@ -383,7 +385,9 @@ class Gloss:
             gloss=d['gloss'],
             comment="; ".join(d['comments'] or []),
             morpheme_gloss=d['morpheme_gloss'],
+            species=d['species'],
             qualifier=d['qualifier'],
+            doubt=d['uncertain'],
             sources=d['sources'])
 
     def __str__(self):
@@ -738,7 +742,7 @@ class Chapter:
         bib['pages'] = md['pages']
         header = "\n[{}](.smallcaps)\n\n".format(md['author'])
         text = vol.replace_cross_refs(text, num)
-        return cls(polish_text(header + vol.replace_refs(text, num)), toc, bib, pages=pages)
+        return cls(polish_text(header + vol.replace_refs(text)), toc, bib, pages=pages)
 
     def iter_sections(self):
         anchor = re.compile(r'<a id=\"(?P<sec>s-[0-9\-]+)\">')
@@ -886,7 +890,7 @@ class Volume:
         res = refs.FIGURE_REF_PATTERN.sub(figref, res)
         return res
 
-    def replace_refs(self, s, chapter=None):
+    def replace_refs(self, s):
         for srcid, pattern in self.source_pattern_dict.items():
             s = pattern.sub(functools.partial(refs.repl_ref, srcid), s)
 
@@ -950,7 +954,7 @@ class Volume:
         forms = extract_formgroups(self._lines)
         try:
             h1, h2, h3, pageno, block = next(forms)
-        except StopIteration:
+        except StopIteration:  # pragma: no cover
             return
         fg = FormGroup.from_data(self, h1, h2, h3, pageno, block)
         yield fg
