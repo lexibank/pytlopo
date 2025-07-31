@@ -68,6 +68,13 @@ def test_ExampleGroup(volume1):
        s:1s  kick-TR-O:3s ART ball
        'I'm kicking the ball.'\
 """.split('\n'))
+    eg = ExampleGroup.from_data(1, volume1, (1, 'C'), (1, 'S'), (1, 'SS'), 10, """\
+1) a. Language (Adm)
+       Au   rabe.
+       s:1s kick
+       'I'm kicking.'\
+""".split('\n'))
+
 
 
 @pytest.mark.parametrize(
@@ -116,6 +123,7 @@ def test_Gloss_cmp(volume1):
         ("POc *mata (Author 2000) 'eye'", lambda pf: len(pf.sources) == 1),
         ("POc *mata 'eye' (Author 2000)", lambda pf: len(pf.glosses[0].sources) == 1),
         ("POc *mata [eye]", lambda pf: pf.morpheme_gloss == 'eye'),
+        ("POc (N) *mata 'eye' [1]", lambda pf: pf.footnote_number == '1'),
     ]
 )
 def test_ProtoForm(volume1, text, assertion):
@@ -128,11 +136,19 @@ def test_ProtoForm(volume1, text, assertion):
     [
         ("Adm: Language form 'gloss'", lambda r: r.forms[0] == 'form'),
         ("Adm: Language |two words| 'gloss'", lambda r: r.forms[0] == 'two words'),
+        ("Adm: Language forma, formb 'gloss'", lambda r: r.form == 'forma, formb'),
+        ("Adm: Language form 'gloss' [1]", lambda r: r.footnote_number == '1'),
     ]
 )
 def test_Reflex(volume1, text, assertion):
     ref = Reflex.from_line(volume1, text)
     assert assertion(ref), ref
+    assert str(ref)
+
+
+def test_Reflex_with_bad_form(volume1):
+    with pytest.raises(ValueError):
+        Reflex.from_line(volume1, " Adm: Language form1 'gloss'")
 
 
 def test_FormGroup(volume1):
@@ -166,12 +182,27 @@ POc *mata 'eye'
     assert rec.reflexes[1].subgroup == 'sg1'
     assert rec.poc_gloss == 'eye'
 
+    rec = Reconstruction.from_data(
+        volume1,
+        ('2', 'Chapter'),
+        ('3', 'Section'),
+        ('4', 'Subsection'),
+        '123',
+        ("""\
+PMP *mata 'eye'
+-sg1
+ Adm: Language form 'gloss'""".split('\n'), [('loans', [" Adm: Language loan 'yes'"])])
+    )
+    assert rec.first_oceanic_protoform.lang == 'PMP'
+    assert str(rec)
+
 
 def test_Volume(volume1):
     assert len(volume1.chapters) == 1
     assert len(volume1.reconstructions) == 3
     assert len(volume1.igts) == 2
     assert len(volume1.formgroups) == 2
+    assert len(list(list(volume1.chapters.values())[0].iter_sections())) == 3
 
 
 @pytest.mark.parametrize(
@@ -181,7 +212,7 @@ def test_Volume(volume1):
         ('§4.1.1', '[§4.1.1](ContributionTable?anchor=s-4-1-1#cldf:1-1)'),
         ('Ch 4, §4.1', '[Ch 4, §4.1](ContributionTable?anchor=s-4-1#cldf:1-4)'),
         ('vol. 1, p.247', '[vol.1,247](ContributionTable?anchor=p-247#cldf:1-9)'),
-        ('', ''),
+        ('vol. 1, ch. 3', '[vol. 1, ch. 3](ContributionTable#cldf:1-3)'),
         ('', ''),
     ]
 )

@@ -424,7 +424,7 @@ class Protoform(Form):
     def form(self):
         return ', '.join(self.forms)
 
-    def __str__(self):
+    def __str__(self):  # pragma: no cover
         return "{}\t{}\t{}{}\t{}".format(
             self.lang,
             ', '.join('*' + f for f in self.forms),
@@ -552,7 +552,7 @@ class Reflex(Form):
             rem_comps = rem.split()
             try:
                 word, comma = rem_comps.pop(0), None
-            except:
+            except:  # pragma: no cover
                 raise ValueError(line)
             if word.endswith(','):
                 word = word[:-1]
@@ -568,7 +568,7 @@ class Reflex(Form):
             for c in iter_graphemes(w):
                 if c != ',':
                     if c not in POC_GRAPHEMES + TRANSCRIPTION:
-                        raise ValueError(c, w, rem, line)
+                        raise ValueError(c, w, rem, line)  # pragma: no cover
 
         rem, ffn, pos = strip_footnote_reference(rem, start_only=True)
         assert not (lfn and ffn)
@@ -631,7 +631,7 @@ class Reconstruction(DataReference):
         return self.reflexes[0].morpheme_gloss or self.reflexes[0].glosses[0].gloss
 
     def key(self):
-        if not self.section:
+        if not self.section:  # pragma: no cover
             print(self)
             raise ValueError(self)
         pf = self.first_oceanic_protoform
@@ -675,7 +675,7 @@ class Reconstruction(DataReference):
                 if line.startswith('-'):
                     subgroup = line[1:].strip()
                     continue
-                raise ValueError(line)
+                raise ValueError(line)  # pragma: no cover
 
         reflexes = list(iter_objs(forms))
         assert any(isinstance(ref, Protoform) for ref in reflexes)
@@ -726,7 +726,7 @@ class Chapter:
         for md in vol.metadata['chapters']:
             if md['number'] == num:
                 break
-        else:
+        else:  # pragma: no cover
             raise ValueError('Chapter number {} not found'.format(num))
 
         pages = set()
@@ -780,7 +780,7 @@ class Volume:
                     '{}-{}'.format(md.parent.name.replace('vol', ''), chap['number'])] = \
                         (int(s), int(e))
 
-    def __str__(self):
+    def __str__(self):  # pragma: no cover
         return self.bib['title']
 
     def match_language(self, s, group=None):

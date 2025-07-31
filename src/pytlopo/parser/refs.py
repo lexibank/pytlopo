@@ -26,7 +26,7 @@ CROSS_REF_PATTERN = re.compile(  # #s-<section>-<subsection>-<subsubsection>
 # FIXME: vol.1, ch.3
 CROSS_REF_PATTERN_NO_SECTION = re.compile(
     r'(vol(\.|ume)\s*(?P<volume>[1-5])\s*(?P<sep>,|\()\s*)'
-    r'((C|c)h(apter|\.)?\s*(?P<chapter>[0-9]+),\s*)'
+    r'((C|c)h(apter|\.)?\s*(?P<chapter>[0-9]+)\s*)'
 )
 
 CROSS_REF_PATTERN_PAGES = re.compile(  # -> 1 #p-<page>  or  (vol.4:278)
