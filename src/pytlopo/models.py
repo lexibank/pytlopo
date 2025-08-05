@@ -740,7 +740,7 @@ class Chapter:
         bib['title'] = md['title']
         bib['author'] = md['author']
         bib['pages'] = md['pages']
-        header = "\n[{}](.smallcaps)\n\n".format(md['author'])
+        header = "\n[{}]{{.smallcaps}}\n\n<!--start-->\n".format(md['author'])
         text = vol.replace_cross_refs(text, num)
         return cls(polish_text(header + vol.replace_refs(text)), toc, bib, pages=pages)
 
